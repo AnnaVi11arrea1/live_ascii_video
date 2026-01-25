@@ -9,16 +9,20 @@ import time
 class TerminalUI:
     """Manages the terminal user interface."""
     
-    def __init__(self, user_name="You"):
+    def __init__(self, user_name="You", theme_color="green"):
         """Initialize terminal UI.
         
         Args:
             user_name: Display name for the local user
+            theme_color: Theme color for video frame
         """
         self.term = Terminal()
         self.running = False
         self.render_thread = None
         self.user_name = user_name
+        self.theme_color = theme_color
+        self.remote_name = "Remote"
+        self.remote_theme_color = "blue"
         
         # UI state
         self.remote_frame = ""
@@ -42,11 +46,15 @@ class TerminalUI:
         self.height = self.term.height
         
         # Side-by-side layout: Left = Remote, Right = Local, Bottom = Chat
-        # Use most of the terminal for video
-        self.video_height = max(75, self.height - 5)  # Use almost all terminal for video
+        # Reserve space for chat (at least 8 lines: header + separator + 5 messages + status + input)
+        min_chat_lines = 8
+        
+        # Calculate video height: total height - chat section - margins
+        self.video_height = max(20, self.height - min_chat_lines - 2)
         self.video_width = max(50, (self.width - 2) // 2)  # Split width in half with divider
         
-        self.chat_height = max(2, self.height - self.video_height - 2)
+        # Chat gets remaining space (at least 5 visible message lines)
+        self.chat_height = max(5, self.height - self.video_height - 4)
         
         # Positions
         self.left_x = 0
@@ -99,19 +107,24 @@ class TerminalUI:
             else:
                 output.append(self.term.home)
             
-            # Headers
-            remote_header = " REMOTE VIDEO ".center(self.video_width)
-            local_header = f"{self.user_name}".center(self.video_width)
+            # Headers with dynamic colors
+            remote_header = f" {self.remote_name.upper()} ".center(self.video_width)
+            local_header = f" {self.user_name.upper()} ".center(self.video_width)
             
-            output.append(self.term.move_xy(self.left_x, 0) + self.term.bold_white_on_blue(remote_header))
-            output.append(self.term.move_xy(self.right_x, 0) + self.term.bold_white_on_green(local_header))
+            # Get color functions based on theme
+            remote_color_func = getattr(self.term, f'bold_white_on_{self.remote_theme_color}', self.term.bold_white_on_blue)
+            local_color_func = getattr(self.term, f'bold_white_on_{self.theme_color}', self.term.bold_white_on_green)
+            
+            output.append(self.term.move_xy(self.left_x, 0) + remote_color_func(remote_header))
+            output.append(self.term.move_xy(self.right_x, 0) + local_color_func(local_header))
             
             # Split frames into lines
             remote_lines = self.remote_frame.split('\n') if self.remote_frame else []
             local_lines = self.local_frame.split('\n') if self.local_frame else []
             
-            # Render videos side by side
-            for i in range(min(self.video_height - 1, 60)):  # Cap at 60 lines max
+            # Render videos side by side (cap at reasonable max to leave room for chat)
+            max_video_lines = min(self.video_height - 1, 50)
+            for i in range(max_video_lines):
                 y_pos = i + 1
                 
                 # Remote video (left) - keep ANSI codes, just truncate
@@ -138,15 +151,18 @@ class TerminalUI:
             # Messages header
             output.append(self.term.move_xy(0, self.chat_y + 1) + self.term.bold(" MESSAGES "))
             
-            # Show recent messages
-            start_idx = max(0, len(self.messages) - (self.chat_height - 2))
+            # Show recent messages (show as many as fit in chat_height)
+            num_visible_msgs = self.chat_height - 1  # -1 for header
+            start_idx = max(0, len(self.messages) - num_visible_msgs)
             for i, msg in enumerate(self.messages[start_idx:]):
+                if i >= num_visible_msgs:
+                    break
                 y_pos = self.chat_y + i + 2
                 truncated_msg = msg[:self.width-1]
                 output.append(self.term.move_xy(0, y_pos) + truncated_msg + self.term.clear_eol)
             
             # Clear remaining chat lines
-            for i in range(len(self.messages[start_idx:]), self.chat_height - 2):
+            for i in range(len(self.messages[start_idx:]), num_visible_msgs):
                 output.append(self.term.move_xy(0, self.chat_y + i + 2) + self.term.clear_eol)
             
             # Status bar
@@ -167,7 +183,7 @@ class TerminalUI:
         with self.lock:
             # Truncate frame if too long to prevent overflow
             lines = frame.split('\n')
-            max_lines = min(len(lines), self.video_height - 1, 60)
+            max_lines = min(len(lines), 50)  # Cap at 50 lines for video
             self.remote_frame = '\n'.join(lines[:max_lines])
     
     def update_local_frame(self, frame):
@@ -175,7 +191,7 @@ class TerminalUI:
         with self.lock:
             # Truncate frame if too long to prevent overflow
             lines = frame.split('\n')
-            max_lines = min(len(lines), self.video_height - 1, 60)
+            max_lines = min(len(lines), 50)  # Cap at 50 lines for video
             self.local_frame = '\n'.join(lines[:max_lines])
     
     def add_message(self, message):
@@ -211,6 +227,12 @@ class TerminalUI:
         """Clear the input text."""
         with self.lock:
             self.input_text = ""
+    
+    def update_remote_name(self, name, theme_color):
+        """Update remote user's name and theme color."""
+        with self.lock:
+            self.remote_name = name
+            self.remote_theme_color = theme_color
 
 
 class InputHandler:

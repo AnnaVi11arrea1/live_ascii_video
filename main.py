@@ -191,6 +191,60 @@ def ask_color_mode():
             console.print("[red]Invalid choice. Please enter 1, 2, or 3.[/red]")
 
 
+def ask_chat_color():
+    """Ask user for their chat message color."""
+    console.print("\n[bold]Chat Color Options:[/bold]")
+    console.print("  1. Red")
+    console.print("  2. Green")
+    console.print("  3. Yellow")
+    console.print("  4. Blue")
+    console.print("  5. Magenta")
+    console.print("  6. Cyan")
+    console.print("  7. White")
+    
+    colors = {
+        '1': 'red',
+        '2': 'green',
+        '3': 'yellow',
+        '4': 'blue',
+        '5': 'magenta',
+        '6': 'cyan',
+        '7': 'white'
+    }
+    
+    while True:
+        choice = input("\nSelect your chat color (1-7): ").strip()
+        if choice in colors:
+            return colors[choice]
+        else:
+            console.print("[red]Invalid choice. Please enter 1-7.[/red]")
+
+
+def ask_theme_color():
+    """Ask user for their video frame theme color."""
+    console.print("\n[bold]Video Frame Theme:[/bold]")
+    console.print("  1. Green")
+    console.print("  2. Blue")
+    console.print("  3. Cyan")
+    console.print("  4. Magenta")
+    console.print("  5. Yellow")
+    
+    themes = {
+        '1': 'green',
+        '2': 'blue',
+        '3': 'cyan',
+        '4': 'magenta',
+        '5': 'yellow'
+    }
+    
+    while True:
+        choice = input("\nSelect your video frame theme (1-5): ").strip()
+        if choice in themes:
+            return themes[choice]
+        else:
+            console.print("[red]Invalid choice. Please enter 1-5.[/red]")
+
+
 
 def main():
     """Main entry point."""
@@ -203,6 +257,12 @@ def main():
     if '--color' not in ' '.join(__import__('sys').argv):
         args.color = ask_color_mode()
         print()
+    
+    # Ask for customization options
+    chat_color = ask_chat_color()
+    print()
+    theme_color = ask_theme_color()
+    print()
     
     # Validate settings
     errors = validate_settings(args)
@@ -248,7 +308,9 @@ def main():
             ascii_width=args.width,
             device_id=args.device,
             color_mode=args.color,
-            user_name=user_name
+            user_name=user_name,
+            chat_color=chat_color,
+            theme_color=theme_color
         )
         
         session.start()

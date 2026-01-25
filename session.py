@@ -13,7 +13,8 @@ class ChatSession:
     """Coordinates video chat session with all components."""
     
     def __init__(self, mode='host', host='0.0.0.0', port=5000, 
-                remote_host=None, ascii_width=None, device_id=0, color_mode="rainbow", user_name="You"):
+                remote_host=None, ascii_width=None, device_id=0, color_mode="rainbow", 
+                user_name="You", chat_color="white", theme_color="green"):
         """
         Initialize chat session.
         
@@ -25,6 +26,9 @@ class ChatSession:
             ascii_width: Width of ASCII art in characters (None = auto-detect from terminal)
             device_id: Camera device ID
             color_mode: Color mode - "rainbow", "bw", or "normal"
+            user_name: Display name for this user
+            chat_color: Color for chat messages
+            theme_color: Theme color for video frame
         """
         self.mode = mode
         self.host = host
@@ -33,12 +37,19 @@ class ChatSession:
         self.device_id = device_id
         self.color_mode = color_mode
         self.user_name = user_name
+        self.chat_color = chat_color
+        self.theme_color = theme_color
+        
+        # Remote user info
+        self.remote_name = "Remote"
+        self.remote_chat_color = "white"
+        self.remote_theme_color = "blue"
         
         # Components - resolution preserved, aspect calculated from image
         self.video_capture = None
         
         # Create UI first to get terminal dimensions
-        self.ui = TerminalUI(user_name=user_name)
+        self.ui = TerminalUI(user_name=user_name, theme_color=theme_color)
         
         # Auto-detect width from terminal if not specified
         if ascii_width is None:
@@ -79,6 +90,7 @@ class ChatSession:
             optimal_width = self.ui.video_width
             self.ascii_converter.set_width(optimal_width)
             self.ui.add_message(f"System: ASCII width set to {optimal_width} chars")
+            self.ui.add_message("System: Type :) :D <3 :fire: :rocket: and more for emojis!")
             
             # Set up input handler
             self.input_handler = InputHandler(self.ui.term, self._on_user_message)
@@ -145,6 +157,9 @@ class ChatSession:
                 self.connected = True
                 self.ui.set_status("Connected!")
                 self.ui.add_message("System: Peer connected!")
+                
+                # Exchange user info
+                self._exchange_user_info()
                 return
         
         if not self.connected:
@@ -162,8 +177,26 @@ class ChatSession:
             self.connected = True
             self.ui.set_status("Connected!")
             self.ui.add_message("System: Connected to peer!")
+            
+            # Exchange user info
+            self._exchange_user_info()
         else:
             raise RuntimeError("Connection failed")
+    
+    def _exchange_user_info(self):
+        """Exchange user information with peer."""
+        from protocol import Protocol
+        
+        # Send our info
+        user_info_msg = Protocol.create_user_info(
+            self.user_name, 
+            self.chat_color, 
+            self.theme_color
+        )
+        self.network.send(user_info_msg)
+        
+        # Wait briefly for their info (it will be handled in _receive_loop)
+        time.sleep(0.5)
     
     def _capture_loop(self):
         """Capture and send video frames."""
@@ -232,7 +265,22 @@ class ChatSession:
                 # Get text messages
                 text = self.network.get_text_message(timeout=0.01)
                 if text:
-                    self.ui.add_message(f"Peer: {text}")
+                    # Format with remote user's color
+                    from blessed import Terminal
+                    term = Terminal()
+                    color_func = getattr(term, self.remote_chat_color, term.white)
+                    self.ui.add_message(color_func(f"{self.remote_name}: {text}"))
+                
+                # Check for user info
+                user_info = self.network.get_user_info(timeout=0.01)
+                if user_info:
+                    from protocol import Protocol
+                    name, chat_color, theme_color = Protocol.parse_user_info(user_info)
+                    self.remote_name = name
+                    self.remote_chat_color = chat_color
+                    self.remote_theme_color = theme_color
+                    self.ui.update_remote_name(name, theme_color)
+                    self.ui.add_message(f"System: {name} has joined the chat!")
                 
             except Exception as e:
                 error_count += 1
@@ -281,9 +329,49 @@ class ChatSession:
     
     def _on_user_message(self, message):
         """Handle user sending a message."""
+        # Check for emoji shortcode
+        message = self._process_emojis(message)
+        
         if self.network and self.network.is_connected():
             self.network.send_text(message)
-            self.ui.add_message(f"You: {message}")
+            # Display with our chat color
+            from blessed import Terminal
+            term = Terminal()
+            color_func = getattr(term, self.chat_color, term.white)
+            self.ui.add_message(color_func(f"You: {message}"))
+    
+    def _process_emojis(self, text):
+        """Replace emoji codes with emojis."""
+        emoji_map = {
+            ':)': '😊',
+            ':D': '😄',
+            ':(': '😢',
+            ':P': '😛',
+            ';)': '😉',
+            '<3': '❤️',
+            ':heart:': '❤️',
+            ':fire:': '🔥',
+            ':star:': '⭐',
+            ':check:': '✓',
+            ':x:': '✗',
+            ':thumbsup:': '👍',
+            ':thumbsdown:': '👎',
+            ':wave:': '👋',
+            ':clap:': '👏',
+            ':rocket:': '🚀',
+            ':eyes:': '👀',
+            ':100:': '💯',
+            ':thinking:': '🤔',
+            ':laugh:': '😂',
+            ':cry:': '😭',
+            ':cool:': '😎',
+            ':party:': '🎉',
+        }
+        
+        for code, emoji in emoji_map.items():
+            text = text.replace(code, emoji)
+        
+        return text
     
     def stop(self):
         """Stop the session and clean up."""
