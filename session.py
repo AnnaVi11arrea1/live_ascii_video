@@ -10,6 +10,7 @@ from video_capture import VideoCapture
 from ascii_converter import AsciiConverter
 from network import NetworkConnection, NetworkServer
 from terminal_ui import TerminalUI, InputHandler
+from sound_manager import SoundManager
 
 
 class ChatSession:
@@ -65,6 +66,9 @@ class ChatSession:
         self.server = None
         self.input_handler = None
         
+        # Initialize sound manager
+        self.sound_manager = SoundManager()
+        
         # State
         self.running = False
         self.connected = False
@@ -88,6 +92,9 @@ class ChatSession:
             # Initialize UI
             self.ui.set_status("Starting up...")
             self.ui.start()
+            
+            # Play startup sound
+            self.sound_manager.play_startup_sound()
             
             # Now that UI is started, update converter width to match terminal
             optimal_width = self.ui.video_width
@@ -268,11 +275,25 @@ class ChatSession:
                 # Get text messages
                 text = self.network.get_text_message(timeout=0.01)
                 if text:
-                    # Format with remote user's color
-                    from blessed import Terminal
-                    term = Terminal()
-                    color_func = getattr(term, self.remote_chat_color, term.white)
-                    self.ui.add_message(color_func(f"{self.remote_name}: {text}"))
+                    # Check if this is a ping message
+                    if text.startswith('[PING] '):
+                        # Play loud alert sound for ping
+                        self.sound_manager.play_ping_alert()
+                        # Extract message and format with ATTENTION
+                        ping_msg = text[7:]  # Remove '[PING] ' prefix
+                        from blessed import Terminal
+                        term = Terminal()
+                        color_func = getattr(term, self.remote_chat_color, term.white)
+                        self.ui.add_message(color_func(f"{self.remote_name}: ATTENTION: {ping_msg}"))
+                    else:
+                        # Regular message - play ding sound
+                        self.sound_manager.play_chat_ding()
+                        
+                        # Format with remote user's color
+                        from blessed import Terminal
+                        term = Terminal()
+                        color_func = getattr(term, self.remote_chat_color, term.white)
+                        self.ui.add_message(color_func(f"{self.remote_name}: {text}"))
                 
                 # Check for user info
                 user_info = self.network.get_user_info(timeout=0.01)
@@ -392,8 +413,10 @@ class ChatSession:
             self._cmd_color_mode(args)
         elif command == '/color-chat':
             self._cmd_color_chat(args)
+        elif command == '/ping':
+            self._cmd_ping(args)
         else:
-            self.ui.add_message(f"System: Unknown command '{command}'. Try /copyframe, /color-mode, or /color-chat")
+            self.ui.add_message(f"System: Unknown command '{command}'. Try /copyframe, /color-mode, /color-chat, or /ping")
     
     def _cmd_copyframe(self, args):
         """Copy current ASCII frame to clipboard."""
@@ -458,6 +481,32 @@ class ChatSession:
         
         self.chat_color = color
         self.ui.add_message(f"System: Chat color changed to {color}")
+    
+    def _cmd_ping(self, args):
+        """Send a ping alert to the other user."""
+        if not args or args.lower() == 'help':
+            self.ui.add_message("System: /ping {message} - Send an alert to the other user with a message")
+            self.ui.add_message("System: Example: /ping Come look at this!")
+            return
+        
+        ping_message = args.strip()
+        
+        if not self.network or not self.network.is_connected():
+            self.ui.add_message("System: Not connected to send ping")
+            return
+        
+        # Play alert sound locally
+        self.sound_manager.play_ping_alert()
+        
+        # Send ping message to peer with special marker
+        ping_text = f"[PING] {ping_message}"
+        self.network.send_text(ping_text)
+        
+        # Display locally
+        from blessed import Terminal
+        term = Terminal()
+        color_func = getattr(term, self.chat_color, term.white)
+        self.ui.add_message(color_func(f"You: ATTENTION: {ping_message}"))
     
     def _strip_ansi_codes(self, text):
         """Remove ANSI color codes from text."""
