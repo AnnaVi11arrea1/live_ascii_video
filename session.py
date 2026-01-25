@@ -1,0 +1,326 @@
+"""
+Session - Main coordinator that integrates all components
+"""
+import threading
+import time
+from video_capture import VideoCapture
+from ascii_converter import AsciiConverter
+from network import NetworkConnection, NetworkServer
+from terminal_ui import TerminalUI, InputHandler
+
+
+class ChatSession:
+    """Coordinates video chat session with all components."""
+    
+    def __init__(self, mode='host', host='0.0.0.0', port=5000, 
+                 remote_host=None, ascii_width=None, device_id=0, color_mode="rainbow"):
+        """
+        Initialize chat session.
+        
+        Args:
+            mode: 'host' or 'connect'
+            host: Host address (for server binding or client connection)
+            port: Port number
+            remote_host: Remote host IP (for connect mode)
+            ascii_width: Width of ASCII art in characters (None = auto-detect from terminal)
+            device_id: Camera device ID
+            color_mode: Color mode - "rainbow", "bw", or "normal"
+        """
+        self.mode = mode
+        self.host = host
+        self.port = port
+        self.remote_host = remote_host
+        self.device_id = device_id
+        self.color_mode = color_mode
+        
+        # Components - resolution preserved, aspect calculated from image
+        self.video_capture = None
+        
+        # Create UI first to get terminal dimensions
+        self.ui = TerminalUI()
+        
+        # Auto-detect width from terminal if not specified
+        if ascii_width is None:
+            # Use the video_width from UI (which is half the terminal minus divider)
+            ascii_width = max(50, (self.ui.term.width - 3) // 2)
+        
+        self.ascii_converter = AsciiConverter(width=ascii_width, char_set="simple", 
+                                             color_mode=color_mode)
+        self.network = None
+        self.server = None
+        self.input_handler = None
+        
+        # State
+        self.running = False
+        self.connected = False
+        
+        # Threads
+        self.capture_thread = None
+        self.receive_thread = None
+        
+        # Stats
+        self.local_frame_count = 0
+        self.remote_frame_count = 0
+        self.last_stats_time = time.time()
+        self.local_fps = 0
+        self.remote_fps = 0
+    
+    def start(self):
+        """Start the chat session."""
+        self.running = True
+        
+        try:
+            # Initialize UI
+            self.ui.set_status("Starting up...")
+            self.ui.start()
+            
+            # Now that UI is started, update converter width to match terminal
+            optimal_width = self.ui.video_width
+            self.ascii_converter.set_width(optimal_width)
+            self.ui.add_message(f"System: ASCII width set to {optimal_width} chars")
+            
+            # Set up input handler
+            self.input_handler = InputHandler(self.ui.term, self._on_user_message)
+            self.input_handler.start()
+            
+            # Initialize video capture
+            self.ui.set_status("Opening camera...")
+            self.ui.add_message("System: Opening camera...")
+            try:
+                self.video_capture = VideoCapture(device_id=self.device_id, fps_target=15)
+                self.video_capture.open()
+                self.ui.add_message("System: Camera opened successfully!")
+            except Exception as e:
+                self.ui.add_message(f"System: Camera error - {e}")
+                raise
+            
+            # Set up network connection
+            if self.mode == 'host':
+                self._start_host_mode()
+            else:
+                self._start_connect_mode()
+            
+            if not self.connected:
+                raise RuntimeError("Failed to establish connection")
+            
+            # Start capture and receive threads
+            self.capture_thread = threading.Thread(target=self._capture_loop, daemon=True)
+            self.capture_thread.start()
+            
+            self.receive_thread = threading.Thread(target=self._receive_loop, daemon=True)
+            self.receive_thread.start()
+            
+            # Stats update thread
+            stats_thread = threading.Thread(target=self._stats_loop, daemon=True)
+            stats_thread.start()
+            
+            # Main loop - handle input
+            self._main_loop()
+            
+        except KeyboardInterrupt:
+            self.ui.add_message("System: Disconnecting...")
+        except Exception as e:
+            self.ui.add_message(f"System: Error - {e}")
+        finally:
+            self.stop()
+    
+    def _start_host_mode(self):
+        """Start in host mode (listen for connection)."""
+        self.ui.set_status(f"Waiting for connection on port {self.port}...")
+        self.ui.add_message(f"System: Hosting on {self.host}:{self.port}")
+        self.ui.add_message("System: Waiting for peer to connect...")
+        
+        self.server = NetworkServer(host=self.host, port=self.port)
+        self.server.start()
+        
+        # Wait for connection (with timeout checks)
+        timeout = 300  # 5 minutes
+        start_time = time.time()
+        
+        while self.running and time.time() - start_time < timeout:
+            conn = self.server.accept(timeout=1.0)
+            if conn:
+                self.network = conn
+                self.connected = True
+                self.ui.set_status("Connected!")
+                self.ui.add_message("System: Peer connected!")
+                return
+        
+        if not self.connected:
+            raise RuntimeError("Connection timeout")
+    
+    def _start_connect_mode(self):
+        """Start in connect mode (connect to host)."""
+        target = self.remote_host if self.remote_host else self.host
+        self.ui.set_status(f"Connecting to {target}:{self.port}...")
+        self.ui.add_message(f"System: Connecting to {target}:{self.port}...")
+        
+        self.network = NetworkConnection()
+        
+        if self.network.connect(target, self.port, timeout=30):
+            self.connected = True
+            self.ui.set_status("Connected!")
+            self.ui.add_message("System: Connected to peer!")
+        else:
+            raise RuntimeError("Connection failed")
+    
+    def _capture_loop(self):
+        """Capture and send video frames."""
+        error_count = 0
+        last_width_check = time.time()
+        
+        while self.running and self.connected:
+            try:
+                # Check if terminal was resized every 2 seconds
+                if time.time() - last_width_check > 2.0:
+                    new_width = self.ui.video_width
+                    if new_width != self.ascii_converter.width:
+                        self.ascii_converter.set_width(new_width)
+                        self.ui.add_message(f"System: Resized to {new_width} chars")
+                    last_width_check = time.time()
+                
+                # Capture frame
+                frame = self.video_capture.read_frame_throttled()
+                
+                if frame is None:
+                    time.sleep(0.01)
+                    continue
+                
+                # Reset error count on successful capture
+                error_count = 0
+                
+                # Convert to ASCII
+                ascii_frame = self.ascii_converter.image_to_ascii(frame)
+                
+                # Update local preview
+                self.ui.update_local_frame(ascii_frame)
+                
+                # Send to peer
+                if self.network and self.network.is_connected():
+                    self.network.send_video_frame(ascii_frame)
+                    self.local_frame_count += 1
+                
+            except Exception as e:
+                error_count += 1
+                if self.running and error_count < 3:
+                    self.ui.add_message(f"System: Capture error - {e}")
+                if error_count >= 5:
+                    self.ui.add_message("System: Too many capture errors, stopping")
+                    break
+                time.sleep(0.1)
+    
+    def _receive_loop(self):
+        """Receive and display remote video frames."""
+        error_count = 0
+        
+        while self.running and self.connected:
+            try:
+                # Check connection
+                if not self.network.is_connected():
+                    self.ui.add_message("System: Connection lost")
+                    self.connected = False
+                    break
+                
+                # Get video frame
+                frame = self.network.get_video_frame(timeout=0.1)
+                if frame:
+                    self.ui.update_remote_frame(frame)
+                    self.remote_frame_count += 1
+                    error_count = 0
+                
+                # Get text messages
+                text = self.network.get_text_message(timeout=0.01)
+                if text:
+                    self.ui.add_message(f"Peer: {text}")
+                
+            except Exception as e:
+                error_count += 1
+                if self.running and error_count < 3:
+                    self.ui.add_message(f"System: Receive error - {e}")
+                if error_count >= 5:
+                    self.ui.add_message("System: Too many receive errors, stopping")
+                    break
+                time.sleep(0.1)
+    
+    def _stats_loop(self):
+        """Update FPS statistics."""
+        while self.running:
+            time.sleep(1.0)
+            
+            current_time = time.time()
+            elapsed = current_time - self.last_stats_time
+            
+            if elapsed > 0:
+                self.local_fps = self.local_frame_count / elapsed
+                self.remote_fps = self.remote_frame_count / elapsed
+                
+                self.ui.update_fps(self.remote_fps, self.local_fps)
+                
+                # Reset counters
+                self.local_frame_count = 0
+                self.remote_frame_count = 0
+                self.last_stats_time = current_time
+    
+    def _main_loop(self):
+        """Main loop - update input display."""
+        while self.running and self.connected:
+            try:
+                # Update input display
+                if self.input_handler:
+                    self.ui.set_input_text(self.input_handler.get_buffer())
+                
+                time.sleep(0.1)  # Slower to reduce CPU usage
+                
+            except KeyboardInterrupt:
+                break
+            except Exception as e:
+                if self.running:
+                    self.ui.add_message(f"System: Main loop error - {e}")
+                break
+    
+    def _on_user_message(self, message):
+        """Handle user sending a message."""
+        if self.network and self.network.is_connected():
+            self.network.send_text(message)
+            self.ui.add_message(f"You: {message}")
+    
+    def stop(self):
+        """Stop the session and clean up."""
+        self.running = False
+        self.connected = False
+        
+        # Stop UI components
+        if self.input_handler:
+            self.input_handler.stop()
+        
+        if self.ui:
+            self.ui.set_status("Disconnected")
+            time.sleep(0.5)  # Give UI time to update
+            self.ui.stop()
+        
+        # Close network
+        if self.network:
+            self.network.close()
+        
+        if self.server:
+            self.server.close()
+        
+        # Close camera
+        if self.video_capture:
+            self.video_capture.close()
+        
+        print("\nSession ended.")
+
+
+if __name__ == "__main__":
+    # Quick test
+    import sys
+    
+    if len(sys.argv) > 1 and sys.argv[1] == 'host':
+        print("Starting in HOST mode on port 5000")
+        session = ChatSession(mode='host', port=5000)
+    else:
+        print("Starting in CONNECT mode to localhost:5000")
+        session = ChatSession(mode='connect', remote_host='127.0.0.1', port=5000)
+    
+    session.start()
