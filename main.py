@@ -12,6 +12,10 @@ from rich.console import Console
 from rich.text import Text
 from session import ChatSession
 
+# imports the new sound manager library
+from sound_manager import SoundManager
+sound_manager = SoundManager()
+
 console = Console()
 
 def parse_args():
@@ -150,6 +154,9 @@ def print_banner():
     console.print("[bold cyan]Real-time P2P Video Chat with ASCII Art - v2.0[/bold cyan]")
     console.print("=" * 80)
     print()
+    
+    # Play startup sound    
+    sound_manager.play_app_start_sound()
 
     global user_name
     user_name = input("Enter your display name: ").strip()
@@ -247,8 +254,8 @@ def ask_theme_color():
 
 
 def main():
-    """Main entry point."""
-    print_banner()
+    """Main entry point."""    
+    print_banner()    
     
     # Parse arguments
     args = parse_args()

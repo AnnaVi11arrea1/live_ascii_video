@@ -188,6 +188,34 @@ class AsciiConverter:
         if self.debug:
             print(f"[DEBUG] Width updated to {width}", file=sys.stderr)
     
+    def generate_no_cam_placeholder(self):
+        """Generate a 'No Cam' placeholder ASCII art."""
+        lines = []
+        width = self.width
+        height = max(10, width // 3)
+        
+        # Create border
+        border = "═" * width
+        lines.append(border)
+        
+        # Add some padding
+        lines.append("║" + " " * (width - 2) + "║")
+        
+        # Center the "No Cam" message
+        message = "NO CAM"
+        padding = (width - len(message) - 2) // 2
+        line = "║" + " " * padding + message + " " * (width - len(message) - padding - 2) + "║"
+        lines.append(line)
+        
+        # Add more padding
+        for _ in range(height - 4):
+            lines.append("║" + " " * (width - 2) + "║")
+        
+        # Bottom border
+        lines.append(border)
+        
+        return "\n".join(lines)
+    
     def set_color_mode(self, mode):
         """Update color mode: 'rainbow', 'bw', or 'normal'."""
         if mode in ['rainbow', 'bw', 'normal']:
