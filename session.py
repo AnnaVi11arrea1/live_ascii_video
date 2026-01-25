@@ -69,6 +69,10 @@ class ChatSession:
         # Initialize sound manager
         self.sound_manager = SoundManager()
         
+        # Sound and camera state
+        self.muted = False
+        self.camera_enabled = True
+        
         # State
         self.running = False
         self.connected = False
@@ -156,6 +160,10 @@ class ChatSession:
         self.server = NetworkServer(host=self.host, port=self.port)
         self.server.start()
         
+        # Start camera preview thread while waiting for connection
+        preview_thread = threading.Thread(target=self._preview_loop, daemon=True)
+        preview_thread.start()
+        
         # Wait for connection (with timeout checks)
         timeout = 300  # 5 minutes
         start_time = time.time()
@@ -208,6 +216,49 @@ class ChatSession:
         # Wait briefly for their info (it will be handled in _receive_loop)
         time.sleep(0.5)
     
+    def _preview_loop(self):
+        """Show camera preview while waiting for connection (host mode only)."""
+        error_count = 0
+        last_update = time.time()
+        
+        while self.running and not self.connected:
+            try:
+                # Limit preview update rate to 2 FPS for host mode
+                if time.time() - last_update < 0.5:
+                    time.sleep(0.1)
+                    continue
+                
+                last_update = time.time()
+                
+                # Check if camera is enabled
+                if not self.camera_enabled:
+                    # Show placeholder when camera is off
+                    ascii_frame = self.ascii_converter.generate_no_cam_placeholder()
+                else:
+                    # Capture frame
+                    frame = self.video_capture.read_frame_throttled()
+                    
+                    if frame is None:
+                        time.sleep(0.05)
+                        continue
+                    
+                    # Reset error count on successful capture
+                    error_count = 0
+                    
+                    # Convert to ASCII
+                    ascii_frame = self.ascii_converter.image_to_ascii(frame)
+                
+                # Update local preview
+                self.ui.update_local_frame(ascii_frame)
+                
+            except Exception as e:
+                error_count += 1
+                if self.running and error_count < 3 and not self.connected:
+                    pass  # Silently skip errors during preview
+                if error_count >= 10:
+                    break
+                time.sleep(0.1)
+    
     def _capture_loop(self):
         """Capture and send video frames."""
         error_count = 0
@@ -223,18 +274,23 @@ class ChatSession:
                         self.ui.add_message(f"System: Resized to {new_width} chars")
                     last_width_check = time.time()
                 
-                # Capture frame
-                frame = self.video_capture.read_frame_throttled()
-                
-                if frame is None:
-                    time.sleep(0.01)
-                    continue
-                
-                # Reset error count on successful capture
-                error_count = 0
-                
-                # Convert to ASCII
-                ascii_frame = self.ascii_converter.image_to_ascii(frame)
+                # Check if camera is enabled
+                if not self.camera_enabled:
+                    # Show placeholder when camera is off
+                    ascii_frame = self.ascii_converter.generate_no_cam_placeholder()
+                else:
+                    # Capture frame
+                    frame = self.video_capture.read_frame_throttled()
+                    
+                    if frame is None:
+                        time.sleep(0.01)
+                        continue
+                    
+                    # Reset error count on successful capture
+                    error_count = 0
+                    
+                    # Convert to ASCII
+                    ascii_frame = self.ascii_converter.image_to_ascii(frame)
                 
                 # Update local preview
                 self.ui.update_local_frame(ascii_frame)
@@ -415,8 +471,12 @@ class ChatSession:
             self._cmd_color_chat(args)
         elif command == '/ping':
             self._cmd_ping(args)
+        elif command == '/mute':
+            self._cmd_mute(args)
+        elif command == '/togglecam':
+            self._cmd_togglecam(args)
         else:
-            self.ui.add_message(f"System: Unknown command '{command}'. Try /copyframe, /color-mode, /color-chat, or /ping")
+            self.ui.add_message(f"System: Unknown command '{command}'. Try /copyframe, /color-mode, /color-chat, /ping, /mute, or /togglecam")
     
     def _cmd_copyframe(self, args):
         """Copy current ASCII frame to clipboard."""
@@ -507,6 +567,26 @@ class ChatSession:
         term = Terminal()
         color_func = getattr(term, self.chat_color, term.white)
         self.ui.add_message(color_func(f"You: ATTENTION: {ping_message}"))
+    
+    def _cmd_mute(self, args):
+        """Mute or unmute all sounds."""
+        if args.lower() == 'help':
+            self.ui.add_message("System: /mute - Toggles all sounds on/off")
+            return
+        
+        self.sound_manager.toggle_mute()
+        status = "Muted" if self.sound_manager.muted else "Unmuted"
+        self.ui.add_message(f"System: Sounds {status}")
+    
+    def _cmd_togglecam(self, args):
+        """Toggle camera on or off."""
+        if args.lower() == 'help':
+            self.ui.add_message("System: /togglecam - Turns camera on/off")
+            return
+        
+        self.camera_enabled = not self.camera_enabled
+        status = "On" if self.camera_enabled else "Off"
+        self.ui.add_message(f"System: Camera {status}")
     
     def _strip_ansi_codes(self, text):
         """Remove ANSI color codes from text."""

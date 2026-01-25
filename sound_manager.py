@@ -10,12 +10,13 @@ import platform
 class SoundManager:
     """Manages sound playback for the application."""
     
-    def __init__(self):
+    def __init__(self, muted=False):
         """Initialize sound manager with configurable sound paths."""
         self.startup_sound = self._get_default_sound_path('startup.wav')
         self.app_start_sound = self._get_default_sound_path('appstart.wav')
         self.chat_ding_sound = self._get_default_sound_path('ding.wav')
         self.ping_alert_sound = self._get_default_sound_path('alert.wav')
+        self.muted = muted
     
     def _get_default_sound_path(self, filename):
         """Get the default path for a sound file."""
@@ -45,29 +46,38 @@ class SoundManager:
             return True
         return False
     
-    # this will play when chat application starts
-    def play_startup_sound(self):
-        """Play startup sound on application start."""
-        self._play_sound(self.startup_sound)
+    def set_muted(self, muted):
+        """Set mute state."""
+        self.muted = muted
+    
+    def toggle_mute(self):
+        """Toggle mute state and return new state."""
+        self.muted = not self.muted
+        return self.muted
     
     # this will play when the application starts
     def play_app_start_sound(self):
         """Play app start sound when starting the application."""
         self._play_sound(self.app_start_sound)
     
-    # this will play when a chat message is received
+    def play_startup_sound(self):
+        """Play startup sound on application start."""
+        if not self.muted:
+            self._play_sound(self.startup_sound)
+    
     def play_chat_ding(self):
         """Play ding sound when receiving a chat message."""
-        # Play in background thread to not block
-        thread = threading.Thread(target=self._play_sound, args=(self.chat_ding_sound,), daemon=True)
-        thread.start()
+        if not self.muted:
+            # Play in background thread to not block
+            thread = threading.Thread(target=self._play_sound, args=(self.chat_ding_sound,), daemon=True)
+            thread.start()
     
-    # this will play when a ping command is received
     def play_ping_alert(self):
         """Play loud alert sound for ping command."""
-        # Play in background thread to not block
-        thread = threading.Thread(target=self._play_sound, args=(self.ping_alert_sound,), daemon=True)
-        thread.start()
+        if not self.muted:
+            # Play in background thread to not block
+            thread = threading.Thread(target=self._play_sound, args=(self.ping_alert_sound,), daemon=True)
+            thread.start()
     
     def _play_sound(self, sound_path):
         """Play a sound file using OS-specific methods."""
