@@ -475,6 +475,15 @@ class ChatSession:
             self._cmd_mute(args)
         elif command == '/togglecam':
             self._cmd_togglecam(args)
+        elif command == '/help':
+            self.ui.add_message("System: Available commands:")
+            self.ui.add_message("System: /copyframe - Copy current ASCII frame to clipboard")
+            self.ui.add_message("System: /color-mode {mode} - Change video color mode (normal, rainbow, grayscale)")
+            self.ui.add_message("System: /color-chat {color} - Change your chat message color")
+            self.ui.add_message("System: /ping {message} - Send an alert to the other user")
+            self.ui.add_message("System: /mute - Toggle all sounds on/off")
+            self.ui.add_message("System: /togglecam - Turn camera on/off")
+            self.ui.add_message("System: Type [command] help for details on a command")
         else:
             self.ui.add_message(f"System: Unknown command '{command}'. Try /copyframe, /color-mode, /color-chat, /ping, /mute, or /togglecam")
     
