@@ -14,7 +14,6 @@ from session import ChatSession
 
 console = Console()
 
-
 def parse_args():
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
@@ -152,6 +151,10 @@ def print_banner():
     console.print("=" * 80)
     print()
 
+    global user_name
+    user_name = input("Enter your display name: ").strip()
+    print(f"Welcome, {user_name}!")
+
 
 def validate_settings(args):
     """Validate command line arguments."""
@@ -244,7 +247,8 @@ def main():
             remote_host=remote_host,
             ascii_width=args.width,
             device_id=args.device,
-            color_mode=args.color
+            color_mode=args.color,
+            user_name=user_name
         )
         
         session.start()
