@@ -9,11 +9,16 @@ import time
 class TerminalUI:
     """Manages the terminal user interface."""
     
-    def __init__(self):
-        """Initialize terminal UI."""
+    def __init__(self, user_name="You"):
+        """Initialize terminal UI.
+        
+        Args:
+            user_name: Display name for the local user
+        """
         self.term = Terminal()
         self.running = False
         self.render_thread = None
+        self.user_name = user_name
         
         # UI state
         self.remote_frame = ""
@@ -96,7 +101,7 @@ class TerminalUI:
             
             # Headers
             remote_header = " REMOTE VIDEO ".center(self.video_width)
-            local_header = " YOUR VIDEO ".center(self.video_width)
+            local_header = f"{self.user_name}".center(self.video_width)
             
             output.append(self.term.move_xy(self.left_x, 0) + self.term.bold_white_on_blue(remote_header))
             output.append(self.term.move_xy(self.right_x, 0) + self.term.bold_white_on_green(local_header))

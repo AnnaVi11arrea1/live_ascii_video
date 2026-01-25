@@ -13,7 +13,7 @@ class ChatSession:
     """Coordinates video chat session with all components."""
     
     def __init__(self, mode='host', host='0.0.0.0', port=5000, 
-                 remote_host=None, ascii_width=None, device_id=0, color_mode="rainbow"):
+                remote_host=None, ascii_width=None, device_id=0, color_mode="rainbow", user_name="You"):
         """
         Initialize chat session.
         
@@ -32,12 +32,13 @@ class ChatSession:
         self.remote_host = remote_host
         self.device_id = device_id
         self.color_mode = color_mode
+        self.user_name = user_name
         
         # Components - resolution preserved, aspect calculated from image
         self.video_capture = None
         
         # Create UI first to get terminal dimensions
-        self.ui = TerminalUI()
+        self.ui = TerminalUI(user_name=user_name)
         
         # Auto-detect width from terminal if not specified
         if ascii_width is None:
@@ -45,7 +46,7 @@ class ChatSession:
             ascii_width = max(50, (self.ui.term.width - 3) // 2)
         
         self.ascii_converter = AsciiConverter(width=ascii_width, char_set="simple", 
-                                             color_mode=color_mode)
+                                            color_mode=color_mode)
         self.network = None
         self.server = None
         self.input_handler = None
