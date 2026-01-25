@@ -5,7 +5,7 @@ import socket
 import threading
 import time
 from queue import Queue, Empty
-from protocol import Protocol, HEADER_SIZE, MSG_VIDEO_FRAME, MSG_TEXT_MESSAGE, MSG_HEARTBEAT
+from protocol import Protocol, HEADER_SIZE, MSG_VIDEO_FRAME, MSG_TEXT_MESSAGE, MSG_HEARTBEAT, MSG_USER_INFO
 
 
 class NetworkConnection:
@@ -25,6 +25,7 @@ class NetworkConnection:
         # Receive queues for different message types
         self.video_queue = Queue(maxsize=5)  # Keep only recent frames
         self.text_queue = Queue()
+        self.user_info_queue = Queue()
         
         # Threads
         self.receive_thread = None
@@ -138,6 +139,10 @@ class NetworkConnection:
                 # Update heartbeat timestamp
                 self.last_heartbeat = time.time()
                 
+            elif msg_type == MSG_USER_INFO:
+                # Queue user info
+                self.user_info_queue.put(payload)
+                
         except Exception as e:
             print(f"Error handling message type 0x{msg_type:02x}: {e}")
     
@@ -188,6 +193,18 @@ class NetworkConnection:
         """Send a heartbeat message."""
         msg = Protocol.create_heartbeat()
         return self.send(msg)
+    
+    def get_user_info(self, timeout=0.1):
+        """
+        Get user info from the queue.
+        
+        Returns:
+            Payload bytes or None
+        """
+        try:
+            return self.user_info_queue.get(timeout=timeout)
+        except Empty:
+            return None
     
     def get_video_frame(self, timeout=0.1):
         """

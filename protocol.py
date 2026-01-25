@@ -9,6 +9,7 @@ import zlib
 MSG_VIDEO_FRAME = 0x01
 MSG_TEXT_MESSAGE = 0x02
 MSG_HEARTBEAT = 0x03
+MSG_USER_INFO = 0x04
 
 # Protocol constants
 HEADER_SIZE = 5  # 1 byte type + 4 bytes length
@@ -96,6 +97,24 @@ class Protocol:
     def create_heartbeat():
         """Create a heartbeat message."""
         return Protocol.encode_message(MSG_HEARTBEAT, b'')
+    
+    @staticmethod
+    def create_user_info(name, chat_color, theme_color):
+        """Create a user info message with name and colors."""
+        import json
+        data = {
+            'name': name,
+            'chat_color': chat_color,
+            'theme_color': theme_color
+        }
+        return Protocol.encode_message(MSG_USER_INFO, json.dumps(data).encode('utf-8'))
+    
+    @staticmethod
+    def parse_user_info(payload):
+        """Parse user info from payload."""
+        import json
+        data = json.loads(payload.decode('utf-8'))
+        return data['name'], data['chat_color'], data['theme_color']
 
 
 if __name__ == "__main__":
