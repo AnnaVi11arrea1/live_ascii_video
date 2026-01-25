@@ -95,8 +95,13 @@ Controls:
 
 class RainbowHighlighter(Highlighter):
     def highlight(self, text):
-        for index in range(len(text)):
-            text.stylize(f"color({randint(16, 255)})", index, index + 1)
+        colorcode = 1
+        for index in range(len(text)):     
+            if text[index] == '\n':       
+                index += 1
+
+            text.stylize(f"color({int(colorcode)})", index, index + 1)
+            
 
 
 rainbow = RainbowHighlighter()
@@ -104,12 +109,18 @@ rainbow = RainbowHighlighter()
 def print_banner():
     """Print ASCII art banner."""
     banner = r"""
-    ___   _______________   _    ___     __                ____ __          __ 
-   /   | / ___/ ____/  _/  | |  / (_)___/ /__  ____      / __ )/ /_  ______/ /_
-  / /| | \__ \/ /    / /   | | / / / __  / _ \/ __ \    / __  / / / / / __  / /
- / ___ |___/ / /____/ /    | |/ / / /_/ /  __/ /_/ /   / /_/ / / /_/ / /_/ / /_
-/_/  |_/____/\____/___/    |___/_/\__,_/\___/\____/   /_____/_/\__,_/\__,_/\__/
-                                                     
+                                                                           
+     .oo .oPYo. .oPYo. o o   o      o 8       o                            
+    .P 8 8      8    8 8 8   8      8 8                                    
+   .P  8 `Yooo. 8      8 8   8      8 8oPYo. o8 .oPYo. .oPYo. .oPYo. oPYo. 
+  oPooo8     `8 8      8 8   8  db  8 8    8  8 Yb..   8    8 8oooo8 8  `' 
+ .P    8      8 8    8 8 8   `b.PY.d' 8    8  8   'Yb. 8    8 8.     8     
+.P     8 `YooP' `YooP' 8 8    `8  8'  8    8  8 `YooP' 8YooP' `Yooo' 8     
+..:::::..:.....::.....:....::::..:..::..:::..:..:.....:8 ....::.....:..::::
+:::::::::::::::::::::::::::::::::::::::::::::::::::::::8 ::::::::::::::::::
+:::::::::::::::::::::::::::::::::::::::::::::::::::::::..::::::::::::::::::
+
+
     """
     print(rainbow(banner))
     print("Real-time P2P Video Chat with ASCII Art - v2.0")
