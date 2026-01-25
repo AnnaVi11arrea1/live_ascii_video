@@ -3,6 +3,9 @@ Session - Main coordinator that integrates all components
 """
 import threading
 import time
+import re
+import subprocess
+import platform
 from video_capture import VideoCapture
 from ascii_converter import AsciiConverter
 from network import NetworkConnection, NetworkServer
@@ -328,17 +331,21 @@ class ChatSession:
                 break
     
     def _on_user_message(self, message):
-        """Handle user sending a message."""
-        # Check for emoji shortcode
-        message = self._process_emojis(message)
-        
-        if self.network and self.network.is_connected():
-            self.network.send_text(message)
-            # Display with our chat color
-            from blessed import Terminal
-            term = Terminal()
-            color_func = getattr(term, self.chat_color, term.white)
-            self.ui.add_message(color_func(f"You: {message}"))
+        """Handle user sending a message or command."""
+        # Check if message is a command
+        if message.startswith('/'):
+            self._handle_command(message)
+        else:
+            # Regular message - check for emoji shortcode
+            message = self._process_emojis(message)
+            
+            if self.network and self.network.is_connected():
+                self.network.send_text(message)
+                # Display with our chat color
+                from blessed import Terminal
+                term = Terminal()
+                color_func = getattr(term, self.chat_color, term.white)
+                self.ui.add_message(color_func(f"You: {message}"))
     
     def _process_emojis(self, text):
         """Replace emoji codes with emojis."""
@@ -372,6 +379,141 @@ class ChatSession:
             text = text.replace(code, emoji)
         
         return text
+    
+    def _handle_command(self, message):
+        """Parse and execute chat commands."""
+        parts = message.split(maxsplit=1)
+        command = parts[0].lower()
+        args = parts[1] if len(parts) > 1 else ""
+        
+        if command == '/copyframe':
+            self._cmd_copyframe(args)
+        elif command == '/color-mode':
+            self._cmd_color_mode(args)
+        elif command == '/color-chat':
+            self._cmd_color_chat(args)
+        else:
+            self.ui.add_message(f"System: Unknown command '{command}'. Try /copyframe, /color-mode, or /color-chat")
+    
+    def _cmd_copyframe(self, args):
+        """Copy current ASCII frame to clipboard."""
+        if args.lower() == 'help':
+            self.ui.add_message("System: /copyframe - Copies the current ASCII video frame to clipboard")
+            return
+        
+        if not self.ui.local_frame:
+            self.ui.add_message("System: No frame to copy yet")
+            return
+        
+        # Remove ANSI color codes from frame before copying
+        frame_text = self._strip_ansi_codes(self.ui.local_frame)
+        
+        try:
+            self._copy_to_clipboard(frame_text)
+            self.ui.add_message("System: Copied To Clipboard")
+        except Exception as e:
+            self.ui.add_message(f"System: Failed to copy frame - {e}")
+    
+    def _cmd_color_mode(self, args):
+        """Change color mode."""
+        if not args or args.lower() == 'help':
+            self.ui.add_message("System: /color-mode {colormode} - Change video color mode")
+            self.ui.add_message("System: Available modes: normal, rainbow, grayscale")
+            return
+        
+        mode = args.lower().strip()
+        valid_modes = ['normal', 'rainbow', 'grayscale', 'bw']
+        
+        if mode not in valid_modes:
+            self.ui.add_message(f"System: Invalid color mode '{mode}'. Valid modes: normal, rainbow, grayscale")
+            return
+        
+        # Map user-friendly names to internal names
+        mode_mapping = {
+            'normal': 'normal',
+            'rainbow': 'rainbow',
+            'grayscale': 'bw',
+            'bw': 'bw'
+        }
+        
+        internal_mode = mode_mapping[mode]
+        self.color_mode = internal_mode
+        self.ascii_converter.set_color_mode(internal_mode)
+        
+        self.ui.add_message(f"System: Color mode changed to {mode}")
+    
+    def _cmd_color_chat(self, args):
+        """Change chat message color."""
+        if not args or args.lower() == 'help':
+            self.ui.add_message("System: /color-chat {color} - Change your chat message color")
+            self.ui.add_message("System: Available colors: white, red, green, yellow, blue, magenta, cyan, black")
+            return
+        
+        color = args.lower().strip()
+        valid_colors = ['white', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'black']
+        
+        if color not in valid_colors:
+            self.ui.add_message(f"System: Invalid color '{color}'. Valid colors: {', '.join(valid_colors)}")
+            return
+        
+        self.chat_color = color
+        self.ui.add_message(f"System: Chat color changed to {color}")
+    
+    def _strip_ansi_codes(self, text):
+        """Remove ANSI color codes from text."""
+        ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+        return ansi_escape.sub('', text)
+    
+    def _copy_to_clipboard(self, text):
+        """Copy text to clipboard (cross-platform)."""
+        system = platform.system()
+        
+        if system == 'Windows':
+            try:
+                import ctypes
+                kernel32 = ctypes.windll.kernel32
+                kernel32.GlobalLock.argtypes = [ctypes.c_void_p]
+                kernel32.GlobalUnlock.argtypes = [ctypes.c_void_p]
+                kernel32.GetClipboardData.argtypes = [ctypes.c_uint]
+                kernel32.SetClipboardData.argtypes = [ctypes.c_uint, ctypes.c_void_p]
+                
+                # Use PowerShell to copy to clipboard
+                process = subprocess.Popen(
+                    ['powershell', '-Command', f'$text = @"\n{text}\n"@ | Set-Clipboard'],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE
+                )
+                process.communicate()
+            except Exception:
+                # Fallback: try using clip command
+                process = subprocess.Popen(
+                    'clip',
+                    stdin=subprocess.PIPE,
+                    shell=True
+                )
+                process.communicate(input=text.encode('utf-8'))
+        
+        elif system == 'Darwin':  # macOS
+            process = subprocess.Popen(
+                ['pbcopy'],
+                stdin=subprocess.PIPE
+            )
+            process.communicate(input=text.encode('utf-8'))
+        
+        else:  # Linux
+            try:
+                process = subprocess.Popen(
+                    ['xclip', '-selection', 'clipboard'],
+                    stdin=subprocess.PIPE
+                )
+                process.communicate(input=text.encode('utf-8'))
+            except FileNotFoundError:
+                # Fallback to xsel if xclip is not available
+                process = subprocess.Popen(
+                    ['xsel', '--clipboard', '--input'],
+                    stdin=subprocess.PIPE
+                )
+                process.communicate(input=text.encode('utf-8'))
     
     def stop(self):
         """Stop the session and clean up."""
