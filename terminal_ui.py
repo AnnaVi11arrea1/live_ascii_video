@@ -46,15 +46,20 @@ class TerminalUI:
         self.height = self.term.height
         
         # Side-by-side layout: Left = Remote, Right = Local, Bottom = Chat
-        # Reserve space for chat (at least 8 lines: header + separator + 5 messages + status + input)
-        min_chat_lines = 8
+        # Keep video height fixed, give more space to chat below
+        # Minimum video height to be usable
+        min_video_height = 30
         
-        # Calculate video height: total height - chat section - margins
-        self.video_height = max(20, self.height - min_chat_lines - 2)
+        # Calculate video height: keep it fixed unless terminal is very small
+        self.video_height = min_video_height
         self.video_width = max(50, (self.width - 2) // 2)  # Split width in half with divider
         
-        # Chat gets remaining space (at least 5 visible message lines)
-        self.chat_height = max(5, self.height - self.video_height - 4)
+        # Chat gets remaining space after video + separator + status + input
+        # Layout: video (20) + separator (1) + header (1) + status (1) + input (1) = 24 lines minimum
+        # Remaining space goes to chat messages
+        reserved_lines = 4  # separator + header + status + input
+        available_chat_height = max(5, self.height - self.video_height - reserved_lines)
+        self.chat_height = available_chat_height
         
         # Positions
         self.left_x = 0
@@ -145,7 +150,7 @@ class TerminalUI:
                 output.append(self.term.move_xy(self.right_x, y_pos) + line + self.term.clear_eol)
             
             # Chat section separator
-            separator = "Commands: /copyframe /color-mode /color-chat /ping /mute /togglecam. For help, type /help.".center(self.width, '─')
+            separator = "Commands: /copyframe /color-mode /color-chat /ping /togglesound /togglecam /exit. For help, type /help.".center(self.width, '─')
             output.append(self.term.move_xy(0, self.chat_y) + self.term.bold_black_on_white(separator))
             
             # Messages header
@@ -251,6 +256,11 @@ class InputHandler:
         self.running = False
         self.input_thread = None
         self.input_buffer = ""
+        
+        # History tracking
+        self.history = []
+        self.history_index = -1
+        self.history_search = ""  # Temporarily stores input while browsing history
     
     def start(self):
         """Start the input handling loop."""
@@ -273,8 +283,11 @@ class InputHandler:
                         if key.name == 'KEY_ENTER':
                             # User pressed Enter
                             if self.input_buffer.strip():
+                                # Add to history before sending
+                                self._add_to_history(self.input_buffer.strip())
                                 self.on_input_callback(self.input_buffer.strip())
                                 self.input_buffer = ""
+                                self.history_index = -1  # Reset history index
                         
                         elif key.name == 'KEY_BACKSPACE':
                             # Backspace
@@ -284,6 +297,15 @@ class InputHandler:
                         elif key.name == 'KEY_ESCAPE':
                             # Escape - clear input
                             self.input_buffer = ""
+                            self.history_index = -1  # Reset history
+                        
+                        elif key.name == 'KEY_UP':
+                            # Go back in history
+                            self._history_previous()
+                        
+                        elif key.name == 'KEY_DOWN':
+                            # Go forward in history
+                            self._history_next()
                         
                         elif key.is_sequence:
                             # Ignore other special keys
@@ -297,6 +319,53 @@ class InputHandler:
             except Exception as e:
                 # Don't crash on input errors
                 pass
+    
+    def _add_to_history(self, command):
+        """Add a command to the history."""
+        self.history.append(command)
+        # Keep history to last 100 entries
+        if len(self.history) > 100:
+            self.history = self.history[-100:]
+    
+    def _history_previous(self):
+        """Go back one entry in history."""
+        if not self.history:
+            return
+        
+        # If at the end of history, save current input
+        if self.history_index == -1:
+            self.history_search = self.input_buffer
+        
+        # Move back in history
+        new_index = self.history_index - 1
+        
+        # Prevent going beyond the start of history
+        if new_index < -len(self.history):
+            new_index = -len(self.history)
+        
+        self.history_index = new_index
+        
+        # Load the history entry
+        if self.history_index < 0:
+            self.input_buffer = self.history[self.history_index]
+        else:
+            self.input_buffer = self.history_search
+    
+    def _history_next(self):
+        """Go forward one entry in history."""
+        if not self.history or self.history_index == -1:
+            return
+        
+        # Move forward in history
+        self.history_index += 1
+        
+        # If we've gone past the end, restore the saved input
+        if self.history_index >= 0:
+            self.input_buffer = self.history_search
+            self.history_index = -1
+        else:
+            # Load the history entry
+            self.input_buffer = self.history[self.history_index]
     
     def get_buffer(self):
         """Get current input buffer."""

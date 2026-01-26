@@ -69,8 +69,7 @@ class ChatSession:
         # Initialize sound manager
         self.sound_manager = SoundManager()
         
-        # Sound and camera state
-        self.muted = False
+        # Camera state
         self.camera_enabled = True
         
         # State
@@ -471,21 +470,24 @@ class ChatSession:
             self._cmd_color_chat(args)
         elif command == '/ping':
             self._cmd_ping(args)
-        elif command == '/mute':
-            self._cmd_mute(args)
+        elif command == '/togglesound':
+            self._cmd_togglesound(args)
         elif command == '/togglecam':
             self._cmd_togglecam(args)
+        elif command == '/exit':
+            self._cmd_exit(args)
         elif command == '/help':
             self.ui.add_message("System: Available commands:")
             self.ui.add_message("System: /copyframe - Copy current ASCII frame to clipboard")
             self.ui.add_message("System: /color-mode {mode} - Change video color mode (normal, rainbow, grayscale)")
             self.ui.add_message("System: /color-chat {color} - Change your chat message color")
             self.ui.add_message("System: /ping {message} - Send an alert to the other user")
-            self.ui.add_message("System: /mute - Toggle all sounds on/off")
+            self.ui.add_message("System: /togglesound - Toggle all sounds on/off")
             self.ui.add_message("System: /togglecam - Turn camera on/off")
+            self.ui.add_message("System: /exit - Exit the program")
             self.ui.add_message("System: Type [command] help for details on a command")
         else:
-            self.ui.add_message(f"System: Unknown command '{command}'. Try /copyframe, /color-mode, /color-chat, /ping, /mute, or /togglecam")
+            self.ui.add_message(f"System: Unknown command '{command}'. Try /copyframe, /color-mode, /color-chat, /ping, /togglesound, /togglecam, or /exit")
     
     def _cmd_copyframe(self, args):
         """Copy current ASCII frame to clipboard."""
@@ -577,10 +579,10 @@ class ChatSession:
         color_func = getattr(term, self.chat_color, term.white)
         self.ui.add_message(color_func(f"You: ATTENTION: {ping_message}"))
     
-    def _cmd_mute(self, args):
-        """Mute or unmute all sounds."""
+    def _cmd_togglesound(self, args):
+        """Toggle all sounds on or off."""
         if args.lower() == 'help':
-            self.ui.add_message("System: /mute - Toggles all sounds on/off")
+            self.ui.add_message("System: /togglesound - Toggles all sounds on/off")
             return
         
         self.sound_manager.toggle_mute()
@@ -596,6 +598,16 @@ class ChatSession:
         self.camera_enabled = not self.camera_enabled
         status = "On" if self.camera_enabled else "Off"
         self.ui.add_message(f"System: Camera {status}")
+    
+    def _cmd_exit(self, args):
+        """Exit the program."""
+        if args.lower() == 'help':
+            self.ui.add_message("System: /exit - Exits the program and closes the connection")
+            return
+        
+        self.ui.add_message("System: Exiting...")
+        self.running = False
+        self.connected = False
     
     def _strip_ansi_codes(self, text):
         """Remove ANSI color codes from text."""
