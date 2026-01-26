@@ -13,8 +13,8 @@ class SoundManager:
     def __init__(self, muted=False):
         """Initialize sound manager with configurable sound paths."""
         self.startup_sound = self._get_default_sound_path('startup.wav')
-        self.app_start_sound = self._get_default_sound_path('appstart.wav')
         self.chat_ding_sound = self._get_default_sound_path('ding.wav')
+        self.app_start_sound = self._get_default_sound_path('appstart.wav')
         self.ping_alert_sound = self._get_default_sound_path('alert.wav')
         self.muted = muted
     
@@ -24,6 +24,11 @@ class SoundManager:
         sounds_dir = os.path.join(os.path.dirname(__file__), 'sounds')
         sound_path = os.path.join(sounds_dir, filename)
         return sound_path
+    
+    # this will play when the application starts
+    def play_app_start_sound(self):
+        """Play app start sound when starting the application."""
+        self._play_sound(self.app_start_sound)
     
     def set_startup_sound(self, path):
         """Set custom path for startup sound."""
@@ -54,11 +59,6 @@ class SoundManager:
         """Toggle mute state and return new state."""
         self.muted = not self.muted
         return self.muted
-    
-    # this will play when the application starts
-    def play_app_start_sound(self):
-        """Play app start sound when starting the application."""
-        self._play_sound(self.app_start_sound)
     
     def play_startup_sound(self):
         """Play startup sound on application start."""
