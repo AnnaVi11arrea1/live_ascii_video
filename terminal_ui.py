@@ -150,7 +150,7 @@ class TerminalUI:
                 output.append(self.term.move_xy(self.right_x, y_pos) + line + self.term.clear_eol)
             
             # Chat section separator
-            separator = "Commands: /copyframe /color-mode /color-chat /ping /togglesound /togglecam /exit. For help, type /help.".center(self.width, '─')
+            separator = "Commands: /copyframe /color-mode /color-chat /ping /togglesound /togglecam /exit /style. For help, type /help.".center(self.width, '─')
             output.append(self.term.move_xy(0, self.chat_y) + self.term.bold_black_on_white(separator))
             
             # Messages header
