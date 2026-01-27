@@ -566,6 +566,8 @@ class ChatSession:
             self._cmd_color_mode(args)
         elif command == '/color-chat':
             self._cmd_color_chat(args)
+        elif command == '/theme':
+            self._cmd_theme(args)
         elif command == '/ping':
             self._cmd_ping(args)
         elif command == '/togglesound':
@@ -581,6 +583,7 @@ class ChatSession:
             self.ui.add_message("System: /copyframe - Copy current ASCII frame to clipboard")
             self.ui.add_message("System: /color-mode {mode} - Change video color mode (normal, rainbow, grayscale)")
             self.ui.add_message("System: /color-chat {color} - Change your chat message color")
+            self.ui.add_message("System: /theme {color} - Set video, frame, and chat colors to the same color")
             self.ui.add_message("System: /ping {message} - Send an alert to the other user")
             self.ui.add_message("System: /togglesound - Toggle all sounds on/off")
             self.ui.add_message("System: /togglecam - Turn camera on/off")
@@ -588,7 +591,7 @@ class ChatSession:
             self.ui.add_message("System: /style - Show text styling help")
             self.ui.add_message("System: Type [command] help for details on a command")
         else:
-            self.ui.add_message(f"System: Unknown command '{command}'. Try /copyframe, /color-mode, /color-chat, /ping, /togglesound, /togglecam, /exit, or /style")
+            self.ui.add_message(f"System: Unknown command '{command}'. Try /copyframe, /color-mode, /color-chat, /theme, /ping, /togglesound, /togglecam, /exit, or /style")
     
     def _cmd_copyframe(self, args):
         """Copy current ASCII frame to clipboard."""
@@ -663,6 +666,26 @@ class ChatSession:
         
         self.chat_color = color
         self.ui.add_message(f"System: Chat color changed to {color}")
+    
+    def _cmd_theme(self, args):
+        """Set video color mode, frame color, and chat color to the same color."""
+        if not args or args.lower() == 'help':
+            self.ui.add_message("System: /theme {color} - Set video, frame, and chat colors to the same color")
+            self.ui.add_message("System: Available theme colors: white, red, green, yellow, blue, magenta, cyan, black")
+            return
+        
+        color = args.lower().strip()
+        valid_colors = ['white', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'black']
+        
+        if color not in valid_colors:
+            self.ui.add_message(f"System: Invalid theme color '{color}'. Valid colors: {', '.join(valid_colors)}")
+            return
+        
+        # Set all three colors to the selected color
+        self.color_mode = color
+        self.ascii_converter.set_color_mode(color)
+        self.chat_color = color
+        self.ui.add_message(f"System: Theme set to {color} (video, frame, and chat colors updated)")
     
     def _cmd_ping(self, args):
         """Send a ping alert to the other user."""
