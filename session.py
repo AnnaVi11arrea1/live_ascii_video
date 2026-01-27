@@ -614,13 +614,15 @@ class ChatSession:
         if not args or args.lower() == 'help':
             self.ui.add_message("System: /color-mode {colormode} - Change video color mode")
             self.ui.add_message("System: Available modes: normal, rainbow, grayscale")
+            self.ui.add_message("System: Solid colors: red, green, blue, yellow, magenta, cyan, white, black")
             return
         
         mode = args.lower().strip()
-        valid_modes = ['normal', 'rainbow', 'grayscale', 'bw']
+        valid_modes = ['normal', 'rainbow', 'grayscale', 'bw', 'red', 'green', 'blue', 'yellow', 'magenta', 'cyan', 'white', 'black']
         
         if mode not in valid_modes:
-            self.ui.add_message(f"System: Invalid color mode '{mode}'. Valid modes: normal, rainbow, grayscale")
+            self.ui.add_message(f"System: Invalid color mode '{mode}'.")
+            self.ui.add_message("System: Valid modes: normal, rainbow, grayscale, red, green, blue, yellow, magenta, cyan, white, black")
             return
         
         # Map user-friendly names to internal names
@@ -628,7 +630,15 @@ class ChatSession:
             'normal': 'normal',
             'rainbow': 'rainbow',
             'grayscale': 'bw',
-            'bw': 'bw'
+            'bw': 'bw',
+            'red': 'red',
+            'green': 'green',
+            'blue': 'blue',
+            'yellow': 'yellow',
+            'magenta': 'magenta',
+            'cyan': 'cyan',
+            'white': 'white',
+            'black': 'black'
         }
         
         internal_mode = mode_mapping[mode]
