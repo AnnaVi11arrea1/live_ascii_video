@@ -339,16 +339,18 @@ class ChatSession:
                         from blessed import Terminal
                         term = Terminal()
                         color_func = getattr(term, self.remote_chat_color, term.white)
-                        self.ui.add_message(color_func(f"{self.remote_name}: ATTENTION: {ping_msg}"))
+                        styled_ping = self._apply_styles(ping_msg)
+                        self.ui.add_message(color_func(f"{self.remote_name}: ATTENTION: {styled_ping}"))
                     else:
                         # Regular message - play ding sound
                         self.sound_manager.play_chat_ding()
                         
-                        # Format with remote user's color
+                        # Format with remote user's color and apply styles
                         from blessed import Terminal
                         term = Terminal()
                         color_func = getattr(term, self.remote_chat_color, term.white)
-                        self.ui.add_message(color_func(f"{self.remote_name}: {text}"))
+                        styled_text = self._apply_styles(text)
+                        self.ui.add_message(color_func(f"{self.remote_name}: {styled_text}"))
                 
                 # Check for user info
                 user_info = self.network.get_user_info(timeout=0.01)
@@ -417,11 +419,12 @@ class ChatSession:
             
             if self.network and self.network.is_connected():
                 self.network.send_text(message)
-                # Display with our chat color
+                # Display with our chat color and apply styles
                 from blessed import Terminal
                 term = Terminal()
                 color_func = getattr(term, self.chat_color, term.white)
-                self.ui.add_message(color_func(f"You: {message}"))
+                styled_message = self._apply_styles(message)
+                self.ui.add_message(color_func(f"You: {styled_message}"))
     
     def _process_emojis(self, text):
         """Replace emoji codes with emojis."""
@@ -456,6 +459,101 @@ class ChatSession:
         
         return text
     
+    def _apply_styles(self, text):
+        """Apply text styling and colors based on markup syntax.
+        
+        Syntax: [style color]text[/style color]
+        
+        Styles: bold, italic, underline, strikeout
+        Colors: white, red, green, yellow, blue, magenta, cyan, black
+        
+        Example: [bold red]Important[/bold red] [underline blue]link[/underline blue]
+        """
+        from blessed import Terminal
+        term = Terminal()
+        
+        # Supported styles and colors
+        styles = ['bold', 'italic', 'underline', 'strikeout']
+        colors = ['white', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'black']
+        
+        result = ""
+        i = 0
+        
+        while i < len(text):
+            # Look for opening tag [style color]
+            if text[i] == '[' and i + 1 < len(text):
+                # Find the closing bracket
+                bracket_end = text.find(']', i)
+                if bracket_end != -1:
+                    tag_content = text[i+1:bracket_end]
+                    
+                    # Check if this is a closing tag [/style color]
+                    if tag_content.startswith('/'):
+                        # Skip closing tags in the main parsing - they're handled with opening tags
+                        i = bracket_end + 1
+                        continue
+                    
+                    # Parse the tag for style and color
+                    parts = tag_content.split()
+                    style = None
+                    color = None
+                    
+                    if len(parts) >= 1 and parts[0] in styles:
+                        style = parts[0]
+                    if len(parts) >= 2 and parts[1] in colors:
+                        color = parts[1]
+                    elif len(parts) >= 1 and parts[0] in colors:
+                        color = parts[0]
+                    
+                    # If we found a valid tag, look for matching closing tag
+                    if style or color:
+                        closing_tag = f"[/{tag_content}]"
+                        content_start = bracket_end + 1
+                        content_end = text.find(closing_tag, content_start)
+                        
+                        if content_end != -1:
+                            # Extract content between tags
+                            styled_text = text[content_start:content_end]
+                            
+                            # Build the styled version
+                            styled_text = self._apply_style_and_color(styled_text, style, color, term)
+                            result += styled_text
+                            
+                            # Move past the closing tag
+                            i = content_end + len(closing_tag)
+                            continue
+            
+            # Regular character
+            result += text[i]
+            i += 1
+        
+        return result
+    
+    def _apply_style_and_color(self, text, style, color, term):
+        """Apply a specific style and color to text using blessed Terminal."""
+        # Build the function name
+        if style and color:
+            # Try: bold_red, italic_blue, etc.
+            func_name = f"{style}_{color}"
+            if hasattr(term, func_name):
+                return getattr(term, func_name)(text)
+            # Try just the color
+            if hasattr(term, color):
+                colored = getattr(term, color)(text)
+                # Now apply style to the colored text
+                if hasattr(term, style):
+                    return getattr(term, style)(colored)
+        elif style:
+            # Just style
+            if hasattr(term, style):
+                return getattr(term, style)(text)
+        elif color:
+            # Just color
+            if hasattr(term, color):
+                return getattr(term, color)(text)
+        
+        return text
+    
     def _handle_command(self, message):
         """Parse and execute chat commands."""
         parts = message.split(maxsplit=1)
@@ -476,6 +574,8 @@ class ChatSession:
             self._cmd_togglecam(args)
         elif command == '/exit':
             self._cmd_exit(args)
+        elif command == '/style':
+            self._cmd_style(args)
         elif command == '/help':
             self.ui.add_message("System: Available commands:")
             self.ui.add_message("System: /copyframe - Copy current ASCII frame to clipboard")
@@ -485,9 +585,10 @@ class ChatSession:
             self.ui.add_message("System: /togglesound - Toggle all sounds on/off")
             self.ui.add_message("System: /togglecam - Turn camera on/off")
             self.ui.add_message("System: /exit - Exit the program")
+            self.ui.add_message("System: /style - Show text styling help")
             self.ui.add_message("System: Type [command] help for details on a command")
         else:
-            self.ui.add_message(f"System: Unknown command '{command}'. Try /copyframe, /color-mode, /color-chat, /ping, /togglesound, /togglecam, or /exit")
+            self.ui.add_message(f"System: Unknown command '{command}'. Try /copyframe, /color-mode, /color-chat, /ping, /togglesound, /togglecam, /exit, or /style")
     
     def _cmd_copyframe(self, args):
         """Copy current ASCII frame to clipboard."""
@@ -608,6 +709,17 @@ class ChatSession:
         self.ui.add_message("System: Exiting...")
         self.running = False
         self.connected = False
+    
+    def _cmd_style(self, args):
+        """Show text styling help."""
+        self.ui.add_message("System: Text Styling Syntax: [style color]text[/style color]")
+        self.ui.add_message("System: Styles: bold, italic, underline, strikeout")
+        self.ui.add_message("System: Colors: white, red, green, yellow, blue, magenta, cyan, black")
+        self.ui.add_message("System: Examples:")
+        self.ui.add_message("System:   [bold red]Important[/bold red]")
+        self.ui.add_message("System:   [italic blue]Comment[/italic blue]")
+        self.ui.add_message("System:   [underline green]Link[/underline green]")
+        self.ui.add_message("System:   [bold yellow]Warning[/bold yellow]")
     
     def _strip_ansi_codes(self, text):
         """Remove ANSI color codes from text."""
