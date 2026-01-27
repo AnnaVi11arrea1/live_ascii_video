@@ -90,9 +90,9 @@ Controls:
     parser.add_argument(
         '--color',
         type=str,
-        choices=['rainbow', 'bw', 'normal'],
+        choices=['rainbow', 'bw', 'normal', 'red', 'green', 'blue', 'yellow', 'magenta', 'cyan', 'white', 'black'],
         default='rainbow',
-        help='Color mode: rainbow (heatmap), bw (black/white), normal (original colors). Default: rainbow'
+        help='Color mode: rainbow (heatmap), bw (black/white), normal (original colors), or solid colors. Default: rainbow'
     )
     
     return parser.parse_args()
@@ -185,17 +185,41 @@ def ask_color_mode():
     console.print("  [yellow]1.[/yellow] Rainbow Heatmap (colorful, brightness-based)")
     console.print("  [white]2.[/white] Black & White (classic ASCII)")
     console.print("  [cyan]3.[/cyan] Normal Colors (original image colors)")
+    console.print("  [red]4.[/red] Red (brightness varies color intensity)")
+    console.print("  [green]5.[/green] Green (brightness varies color intensity)")
+    console.print("  [blue]6.[/blue] Blue (brightness varies color intensity)")
+    console.print("  [yellow]7.[/yellow] Yellow (brightness varies color intensity)")
+    console.print("  [magenta]8.[/magenta] Magenta (brightness varies color intensity)")
+    console.print("  [cyan]9.[/cyan] Cyan (brightness varies color intensity)")
+    console.print("  [white]10.[/white] White (brightness varies intensity)")
+    console.print("  [black]11.[/black] Black (subtle brightness variation)")
     
     while True:
-        choice = input("\nSelect color mode (1-3): ").strip()
+        choice = input("\nSelect color mode (1-11): ").strip()
         if choice == '1':
             return 'rainbow'
         elif choice == '2':
             return 'bw'
         elif choice == '3':
             return 'normal'
+        elif choice == '4':
+            return 'red'
+        elif choice == '5':
+            return 'green'
+        elif choice == '6':
+            return 'blue'
+        elif choice == '7':
+            return 'yellow'
+        elif choice == '8':
+            return 'magenta'
+        elif choice == '9':
+            return 'cyan'
+        elif choice == '10':
+            return 'white'
+        elif choice == '11':
+            return 'black'
         else:
-            console.print("[red]Invalid choice. Please enter 1, 2, or 3.[/red]")
+            console.print("[red]Invalid choice. Please enter 1-11.[/red]")
 
 
 def ask_chat_color():
