@@ -18,18 +18,18 @@ def open_manual():
     manual_path = os.path.join(script_dir, "COMMANDS.md")
     
     if not os.path.exists(manual_path):
+        print(f"Manual not found at: {manual_path}")
         return False
     
     system = platform.system()
     
     try:
         if system == "Windows":
-            # Windows - open in new CMD window
+            # Windows - open in new CMD window with more command to paginate
             subprocess.Popen([
-                'start',
                 'cmd',
-                '/k',
-                f'type "{manual_path}" && echo. && echo Press any key to close... && pause > nul'
+                '/c',
+                f'start "ASCII Whisper Manual" cmd /k "type "{manual_path}" & echo. & echo. & echo Press any key to close... & pause > nul"'
             ], shell=True)
             return True
         
@@ -78,12 +78,14 @@ def show_quick_help():
         "/manual       - Open full manual in new window",
         "/help         - Show this quick help",
         "/battleship   - Start Battleship game",
+        "/map          - Show attack history (during game)",
+        "/ai <msg>     - Talk to AI commentator",
         "/quit         - Exit game (when in game)",
         "",
         "During Battleship:",
-        "  - Type coordinates to attack (e.g., A5, J10)",
-        "  - Type messages normally to chat",
-        "  - Type /quit to exit game",
+        "  - Ship placement: /A5 H (coordinate + H/V)",
+        "  - Attack: /A5 (just coordinate)",
+        "  - Chat normally (no slash = chat message)",
         "",
         "Type /manual for complete documentation!",
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
