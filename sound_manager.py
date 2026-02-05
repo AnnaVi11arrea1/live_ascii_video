@@ -119,6 +119,37 @@ class SoundManager:
             # Play in background thread to not block
             thread = threading.Thread(target=self._play_sound, args=(self.ping_alert_sound,), daemon=True)
             thread.start()
+            
+    # Play Battleship sounds
+    def play_battleship_miss(self):
+        """Play sound for battleship miss."""
+        if not self.muted:
+            thread = threading.Thread(target=self._play_sound, args=(self.battleship_miss_sound,), daemon=True)
+            thread.start()
+        
+    def play_battleship_hit(self):
+        """Play sound for battleship hit."""
+        if not self.muted:
+            thread = threading.Thread(target=self._play_sound, args=(self.battleship_hit_sound,), daemon=True)
+            thread.start()
+    
+    def play_battleship_sink(self):
+        """Play sound for battleship sinking a ship."""
+        if not self.muted:
+            thread = threading.Thread(target=self._play_sound, args=(self.battleship_sink_sound,), daemon=True)
+            thread.start()
+            
+    def play_battleship_win(self):
+        """Play sound for battleship win."""
+        if not self.muted:
+            thread = threading.Thread(target=self._play_sound, args=(self.battleship_win_sound,), daemon=True)
+            thread.start()
+            
+    def play_battleship_start(self):
+        """Play sound for battleship game start."""
+        if not self.muted:
+            thread = threading.Thread(target=self._play_sound, args=(self.battleship_start_sound,), daemon=True)
+            thread.start()
     
     def _play_sound(self, sound_path):
         """Play a sound file using OS-specific methods."""
