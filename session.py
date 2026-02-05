@@ -1355,10 +1355,8 @@ class ChatSession:
         # Display result
         if result == "miss":
             self.ui.add_message(f"System: {coord_str} - MISS! ○")
-            self.sound_manager.play_battleship_miss()
         elif result == "hit":
             self.ui.add_message(f"System: {coord_str} - HIT! ✕")
-            self.sound_manager.play_battleship_hit()
             # AI trash talk on hit (only if we're commentator)
             if self.ai_enabled and self.ai_is_commentator:
                 def ai_hit():
@@ -1368,7 +1366,6 @@ class ChatSession:
         elif result == "sunk":
             self.ui.add_message(f"System: {coord_str} - HIT! You sunk their {ship_name}! ✗")
             # AI trash talk on sunk (only if we're commentator)
-            self.sound_manager.play_battleship_sink()
             if self.ai_enabled and self.ai_is_commentator:
                 def ai_sunk():
                     comment = self.ai_assistant.comment_on_sunk(self.user_name, ship_name, True)
@@ -1384,8 +1381,7 @@ class ChatSession:
             from blessed import Terminal
             term = Terminal()
             if winner == "player":
-                self.ui.add_message(term.bright_green("System: ★★★ VICTORY! You sunk all enemy ships! ★★★"))
-                self.sound_manager.play_battleship_win()    
+                self.ui.add_message(term.bright_green("System: ★★★ VICTORY! You sunk all enemy ships! ★★★"))                
             else:
                 self.ui.add_message("System: ☠ DEFEAT! All your ships were sunk! ☠")
             
@@ -1643,13 +1639,20 @@ class ChatSession:
                                 break
                 
                 # Display the result of our attack
+                
+            
+            
+                
                 coord_str = BattleshipGame.pos_to_coord(self.battleship_last_attack_pos) if self.battleship_last_attack_pos else "?"
                 if result == "miss":
                     self.ui.add_message(f"System: {coord_str} - MISS! ○")
+                    self.sound_manager.play_battleship_miss()
                 elif result == "hit":
                     self.ui.add_message(f"System: {coord_str} - HIT! ✕")
+                    self.sound_manager.play_battleship_hit()
                 elif result == "sunk":
                     self.ui.add_message(f"System: {coord_str} - HIT! You sunk their {ship_name}! ✗")
+                    self.sound_manager.play_battleship_sink()
                 elif result == "already_attacked":
                     self.ui.add_message(f"System: You already attacked that position!")
                 
@@ -1666,6 +1669,7 @@ class ChatSession:
                     term = Terminal()
                     if winner == "player":
                         self.ui.add_message(term.bright_green("System: ★★★ VICTORY! You sunk all enemy ships! ★★★"))
+                        self.sound_manager.play_battleship_win()
                     else:
                         self.ui.add_message("System: ☠ DEFEAT! All your ships were sunk! ☠")
                     self.battleship_game.game_phase = "finished"
