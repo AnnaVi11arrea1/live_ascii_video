@@ -84,6 +84,10 @@ class ChatSession:
         self.battleship_waiting_for_opponent = False
         self.battleship_last_attack_pos = None  # Track last attack coordinate for multiplayer
         self.battleship_my_hits = set()  # Track which of our attacks were hits (for multiplayer)
+        self.battleship_my_ships_placed = False  # Track if we've placed all ships
+        self.battleship_opponent_ships_placed = False  # Track if opponent placed all ships
+        self.battleship_my_dice_roll = None  # Our dice roll result
+        self.battleship_opponent_dice_roll = None  # Opponent's dice roll
         
         # State
         self.running = False
@@ -649,6 +653,8 @@ class ChatSession:
             self._cmd_quit(args)
         elif command == '/help':
             self._cmd_help(args)
+        elif command == '/map':
+            self._cmd_map(args)
         else:
             self.ui.add_message(f"System: Unknown command '{command}'. Type /help for available commands or /manual for full documentation")
     
@@ -916,6 +922,18 @@ class ChatSession:
         self._end_battleship_game()
         self.ui.add_message("System: Exited Battleship game")
     
+    def _cmd_map(self, args):
+        """Show attack history map."""
+        if not self.battleship_game:
+            self.ui.add_message("System: No active game. Start a game with /battleship")
+            return
+        
+        if self.battleship_game.game_phase != "playing":
+            self.ui.add_message("System: Game must be in progress to view attack map")
+            return
+        
+        self._show_attack_history()
+    
     def _start_battleship_game(self, mode):
         """Start a new battleship game."""
         self.battleship_mode = mode
@@ -982,14 +1000,14 @@ class ChatSession:
         
         # Build the board with colors
         lines = []
-        # Header
-        header = "    " + " ".join(f"{i:2}" for i in range(1, self.battleship_game.grid_size + 1))
+        # Header - use 3 chars per column for proper spacing
+        header = "     " + "".join(f"{i:3}" for i in range(1, self.battleship_game.grid_size + 1))
         lines.append(header)
         
         # Rows
         for row in range(self.battleship_game.grid_size):
             row_char = chr(ord('A') + row)
-            row_str = f" {row_char}  "
+            row_str = f"  {row_char}  "
             
             for col in range(self.battleship_game.grid_size):
                 pos = (row, col)
@@ -1008,13 +1026,13 @@ class ChatSession:
                     
                     if is_hit:
                         # Red X for hits
-                        row_str += f" {term.red('X')} "
+                        row_str += f"{term.red('X')}  "
                     else:
                         # White O for misses
-                        row_str += f" {term.white('O')} "
+                        row_str += f"{term.white('O')}  "
                 else:
                     # Cyan ~ for unknown
-                    row_str += f" {term.cyan('~')} "
+                    row_str += f"{term.cyan('~')}  "
             
             lines.append(row_str)
         
@@ -1028,13 +1046,86 @@ class ChatSession:
     
     def _start_battleship_attack_phase(self):
         """Start the attack phase of the game."""
+        from blessed import Terminal
+        term = Terminal()
+        
+        if self.battleship_mode == "vs_human":
+            # Multiplayer - mark that we've placed our ships
+            self.battleship_my_ships_placed = True
+            
+            # Show blue "waiting for opponent" message
+            self.ui.add_message(term.blue("System: ✓ All your ships placed! Waiting for opponent to finish..."))
+            
+            # Send notification to opponent
+            from protocol import Protocol
+            ready_msg = Protocol.create_battleship_ship_placement()
+            self.network.send(ready_msg)
+            
+            # If opponent is also ready, start dice roll
+            if self.battleship_opponent_ships_placed:
+                self._start_dice_roll()
+        else:
+            # AI mode - start immediately
+            self.battleship_game.game_phase = "playing"
+            self.battleship_my_turn = True
+            
+            self.ui.add_message("System: ═══ ALL SHIPS PLACED - BATTLE BEGINS! ═══")
+            self.ui.add_message("System: Enter coordinates to attack (e.g., /A5)")
+            self.ui.add_message("System: Type /quit to exit game anytime")
+            
+            self._update_battleship_display()
+    
+    def _start_dice_roll(self):
+        """Roll dice to determine who goes first."""
+        import random
+        from blessed import Terminal
+        term = Terminal()
+        
+        self.ui.add_message("System: ═══ BOTH PLAYERS READY! ═══")
+        self.ui.add_message("System: Rolling d20 to determine first turn...")
+        
+        # Roll our dice
+        self.battleship_my_dice_roll = random.randint(1, 20)
+        self.ui.add_message(f"System: You rolled: {self.battleship_my_dice_roll}")
+        
+        # Send our roll to opponent
+        from protocol import Protocol
+        roll_msg = Protocol.create_battleship_move(str(self.battleship_my_dice_roll))  # Reusing move message
+        self.network.send(roll_msg)
+        
+        # If we have both rolls, determine winner
+        if self.battleship_opponent_dice_roll is not None:
+            self._determine_first_turn()
+    
+    def _determine_first_turn(self):
+        """Determine who goes first based on dice rolls."""
+        from blessed import Terminal
+        term = Terminal()
+        
+        self.ui.add_message(f"System: {self.remote_name} rolled: {self.battleship_opponent_dice_roll}")
+        
+        if self.battleship_my_dice_roll > self.battleship_opponent_dice_roll:
+            self.battleship_my_turn = True
+            self.ui.add_message(term.bright_green("System: You go first!"))
+        elif self.battleship_my_dice_roll < self.battleship_opponent_dice_roll:
+            self.battleship_my_turn = False
+            self.ui.add_message(term.blue(f"System: {self.remote_name} goes first!"))
+        else:
+            # Tie - roll again
+            self.ui.add_message("System: Tie! Rolling again...")
+            self.battleship_my_dice_roll = None
+            self.battleship_opponent_dice_roll = None
+            self._start_dice_roll()
+            return
+        
+        # Start the game
         self.battleship_game.game_phase = "playing"
-        self.battleship_my_turn = True
-        
-        self.ui.add_message("System: ═══ ALL SHIPS PLACED - BATTLE BEGINS! ═══")
-        self.ui.add_message("System: Enter coordinates to attack (e.g., /A5)")
+        self.ui.add_message("System: ═══ BATTLE BEGINS! ═══")
+        if self.battleship_my_turn:
+            self.ui.add_message("System: Enter coordinates to attack (e.g., /A5)")
+        else:
+            self.ui.add_message("System: Waiting for opponent's move...")
         self.ui.add_message("System: Type /quit to exit game anytime")
-        
         self._update_battleship_display()
     
     def _handle_battleship_input(self, message):
@@ -1133,8 +1224,10 @@ class ChatSession:
         # Check for winner
         winner = self.battleship_game.check_winner()
         if winner:
+            from blessed import Terminal
+            term = Terminal()
             if winner == "player":
-                self.ui.add_message("System: ★★★ VICTORY! You sunk all enemy ships! ★★★")
+                self.ui.add_message(term.bright_green("System: ★★★ VICTORY! You sunk all enemy ships! ★★★"))
             else:
                 self.ui.add_message("System: ☠ DEFEAT! All your ships were sunk! ☠")
             
@@ -1170,8 +1263,10 @@ class ChatSession:
             # Check for winner again
             winner = self.battleship_game.check_winner()
             if winner:
+                from blessed import Terminal
+                term = Terminal()
                 if winner == "player":
-                    self.ui.add_message("System: ★★★ VICTORY! You sunk all enemy ships! ★★★")
+                    self.ui.add_message(term.bright_green("System: ★★★ VICTORY! You sunk all enemy ships! ★★★"))
                 else:
                     self.ui.add_message("System: ☠ DEFEAT! All your ships were sunk! ☠")
                 
@@ -1229,6 +1324,10 @@ class ChatSession:
         self.battleship_waiting_for_opponent = False
         self.battleship_last_attack_pos = None
         self.battleship_my_hits = set()
+        self.battleship_my_ships_placed = False
+        self.battleship_opponent_ships_placed = False
+        self.battleship_my_dice_roll = None
+        self.battleship_opponent_dice_roll = None
         self.ui.stop_battleship()
     
     def _handle_battleship_message(self, msg_data):
@@ -1266,15 +1365,31 @@ class ChatSession:
         elif msg_type == MSG_BATTLESHIP_SHIP_PLACEMENT:
             # Opponent finished ship placement
             if self.battleship_game and self.battleship_mode == "vs_human":
-                self.ui.add_message("System: Opponent has finished placing ships!")
-                # Check if we're also done to start the game
-                if self.battleship_game.game_phase == "playing":
-                    self.ui.add_message("System: Both players ready - Battle begins!")
+                from blessed import Terminal
+                term = Terminal()
+                self.battleship_opponent_ships_placed = True
+                self.ui.add_message(term.blue(f"System: {self.remote_name} has finished placing ships!"))
+                
+                # If we're also done, start dice roll
+                if self.battleship_my_ships_placed:
+                    self._start_dice_roll()
         
         elif msg_type == MSG_BATTLESHIP_MOVE:
-            # Opponent's attack
+            # Could be opponent's attack OR dice roll
             if self.battleship_game and self.battleship_mode == "vs_human":
                 coord_str = Protocol.parse_battleship_move(payload)
+                
+                # Check if this is a dice roll (numeric value 1-20 during setup)
+                if self.battleship_game.game_phase == "setup" and coord_str.isdigit():
+                    roll = int(coord_str)
+                    if 1 <= roll <= 20:
+                        self.battleship_opponent_dice_roll = roll
+                        # If we have both rolls, determine winner
+                        if self.battleship_my_dice_roll is not None:
+                            self._determine_first_turn()
+                        return
+                
+                # Otherwise it's an attack
                 pos = BattleshipGame.coord_to_pos(coord_str)
                 
                 if pos:
@@ -1296,12 +1411,14 @@ class ChatSession:
                     # Check for winner
                     winner = self.battleship_game.check_winner()
                     if winner:
+                        from blessed import Terminal
+                        term = Terminal()
                         if winner == "opponent":
                             # Opponent sunk all our ships - they win, we lose
                             self.ui.add_message("System: ☠ DEFEAT! All your ships were sunk! ☠")
                         else:
                             # We sunk all opponent's ships - we win
-                            self.ui.add_message("System: ★★★ VICTORY! You sunk all enemy ships! ★★★")
+                            self.ui.add_message(term.bright_green("System: ★★★ VICTORY! You sunk all enemy ships! ★★★"))
                         self.battleship_game.game_phase = "finished"
                     else:
                         # Now it's our turn
@@ -1354,8 +1471,10 @@ class ChatSession:
                 # Check if we won (all opponent ships sunk)
                 winner = self.battleship_game.check_winner()
                 if winner:
+                    from blessed import Terminal
+                    term = Terminal()
                     if winner == "player":
-                        self.ui.add_message("System: ★★★ VICTORY! You sunk all enemy ships! ★★★")
+                        self.ui.add_message(term.bright_green("System: ★★★ VICTORY! You sunk all enemy ships! ★★★"))
                     else:
                         self.ui.add_message("System: ☠ DEFEAT! All your ships were sunk! ☠")
                     self.battleship_game.game_phase = "finished"

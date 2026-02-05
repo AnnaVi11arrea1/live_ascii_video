@@ -173,14 +173,17 @@ Ship placement format:
 
 GAME COMMANDS:
 ───────────────────────────────────────────────────────────────────────────────
-  /quit      - Exit game and return to chat
+  /battleship - Start a new Battleship game
+  /map        - Display your attack history chart (during game)
+  /quit       - Exit game and return to chat
+  /manual     - Open this manual
+  /help       - Show quick help
   
 During game, you can still send regular chat messages - just don't start them
 with a slash! For example:
   • "nice shot!" - Sent as chat message ✓
   • /B7          - Attack coordinate B7 ✓
-  /manual    - Open this manual
-  /help      - Show quick help
+  • /map         - Show attack history ✓
 
 CHATTING DURING GAME:
 ───────────────────────────────────────────────────────────────────────────────
