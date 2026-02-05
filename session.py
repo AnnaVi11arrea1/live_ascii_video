@@ -1010,6 +1010,7 @@ class ChatSession:
         
         # Start ship placement phase
         self.ui.add_message("System: ═══ BATTLESHIP GAME STARTED ═══")
+        self.sound_manager.play_battleship_start()
         self.ui.add_message("System: Place your ships! Use /coordinate orientation (e.g., /A5 H)")
         self._prompt_next_ship_placement()
         
@@ -1301,14 +1302,10 @@ class ChatSession:
         # Display result
         if result == "miss":
             self.ui.add_message(f"System: {coord_str} - MISS! ○")
-            # AI trash talk on miss (only if we're commentator)
-            if self.ai_enabled and self.ai_is_commentator:
-                def ai_miss():
-                    comment = self.ai_assistant.comment_on_miss(self.user_name, coord_str, True)
-                    self._send_ai_comment(comment)
-                threading.Thread(target=ai_miss, daemon=True).start()
+            self.sound_manager.play_battleship_miss()
         elif result == "hit":
             self.ui.add_message(f"System: {coord_str} - HIT! ✕")
+            self.sound_manager.play_battleship_hit()
             # AI trash talk on hit (only if we're commentator)
             if self.ai_enabled and self.ai_is_commentator:
                 def ai_hit():
@@ -1318,6 +1315,7 @@ class ChatSession:
         elif result == "sunk":
             self.ui.add_message(f"System: {coord_str} - HIT! You sunk their {ship_name}! ✗")
             # AI trash talk on sunk (only if we're commentator)
+            self.sound_manager.play_battleship_sink()
             if self.ai_enabled and self.ai_is_commentator:
                 def ai_sunk():
                     comment = self.ai_assistant.comment_on_sunk(self.user_name, ship_name, True)
@@ -1334,6 +1332,7 @@ class ChatSession:
             term = Terminal()
             if winner == "player":
                 self.ui.add_message(term.bright_green("System: ★★★ VICTORY! You sunk all enemy ships! ★★★"))
+                self.sound_manager.play_battleship_win()    
             else:
                 self.ui.add_message("System: ☠ DEFEAT! All your ships were sunk! ☠")
             
