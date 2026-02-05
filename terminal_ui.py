@@ -34,6 +34,12 @@ class TerminalUI:
         self.fps_local = 0
         self.layout_changed = False
         
+        # Battleship game state
+        self.battleship_active = False
+        self.battleship_player_board = ""
+        self.battleship_attack_board = ""
+        self.battleship_status = ""
+        
         # Layout
         self.update_layout()
         
@@ -150,7 +156,10 @@ class TerminalUI:
                 output.append(self.term.move_xy(self.right_x, y_pos) + line + self.term.clear_eol)
             
             # Chat section separator
-            separator = "Commands: /copyframe /color-mode /color-chat /ping /togglesound /togglecam /exit /style. For help, type /help.".center(self.width, '─')
+            if self.battleship_active:
+                separator = "Commands: /quit to exit game | /manual for help | Chat messages work during game!".center(self.width, '─')
+            else:
+                separator = "Commands: /copyframe /color-mode /color-chat /ping /togglesound /togglecam /exit /style. For help, type /help.".center(self.width, '─')
             output.append(self.term.move_xy(0, self.chat_y) + self.term.bold_black_on_white(separator))
             
             # Messages header
@@ -169,6 +178,48 @@ class TerminalUI:
             # Clear remaining chat lines
             for i in range(len(self.messages[start_idx:]), num_visible_msgs):
                 output.append(self.term.move_xy(0, self.chat_y + i + 2) + self.term.clear_eol)
+            
+            # Battleship game display (if active)
+            if self.battleship_active and self.battleship_player_board:
+                game_y = self.chat_y + num_visible_msgs + 3
+                
+                # Game separator
+                game_sep = " BATTLESHIP ".center(self.width, '═')
+                output.append(self.term.move_xy(0, game_y) + self.term.bold_cyan(game_sep))
+                
+                # Split boards into lines
+                player_lines = self.battleship_player_board.split('\n') if self.battleship_player_board else []
+                attack_lines = self.battleship_attack_board.split('\n') if self.battleship_attack_board else []
+                
+                # Calculate board width (approximately half the terminal width)
+                board_width = min(40, self.width // 2 - 2)
+                
+                # Render boards side by side
+                max_board_lines = min(len(player_lines), len(attack_lines), 15)
+                for i in range(max_board_lines):
+                    y_pos = game_y + i + 1
+                    
+                    # Your ships board (left)
+                    if i < len(player_lines):
+                        line = player_lines[i][:board_width]
+                    else:
+                        line = ""
+                    output.append(self.term.move_xy(0, y_pos) + line.ljust(board_width))
+                    
+                    # Divider
+                    output.append(self.term.move_xy(board_width, y_pos) + " │ ")
+                    
+                    # Your attacks board (right)
+                    if i < len(attack_lines):
+                        line = attack_lines[i][:board_width]
+                    else:
+                        line = ""
+                    output.append(self.term.move_xy(board_width + 3, y_pos) + line)
+                
+                # Game status
+                status_y = game_y + max_board_lines + 1
+                if status_y < self.status_y:
+                    output.append(self.term.move_xy(0, status_y) + self.term.bold_yellow(self.battleship_status[:self.width]))
             
             # Status bar
             status = f"Status: {self.status_text} | FPS: Remote={self.fps_remote:.1f} Local={self.fps_local:.1f}"
@@ -238,6 +289,28 @@ class TerminalUI:
         with self.lock:
             self.remote_name = name
             self.remote_theme_color = theme_color
+    
+    def start_battleship(self):
+        """Activate battleship game UI."""
+        with self.lock:
+            self.battleship_active = True
+            self.layout_changed = True
+    
+    def stop_battleship(self):
+        """Deactivate battleship game UI."""
+        with self.lock:
+            self.battleship_active = False
+            self.battleship_player_board = ""
+            self.battleship_attack_board = ""
+            self.battleship_status = ""
+            self.layout_changed = True
+    
+    def update_battleship_boards(self, player_board: str, attack_board: str, status: str):
+        """Update battleship game boards."""
+        with self.lock:
+            self.battleship_player_board = player_board
+            self.battleship_attack_board = attack_board
+            self.battleship_status = status
 
 
 class InputHandler:

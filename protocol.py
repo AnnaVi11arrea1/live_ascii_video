@@ -10,6 +10,12 @@ MSG_VIDEO_FRAME = 0x01
 MSG_TEXT_MESSAGE = 0x02
 MSG_HEARTBEAT = 0x03
 MSG_USER_INFO = 0x04
+MSG_BATTLESHIP_INVITE = 0x05
+MSG_BATTLESHIP_ACCEPT = 0x06
+MSG_BATTLESHIP_SHIP_PLACEMENT = 0x07
+MSG_BATTLESHIP_MOVE = 0x08
+MSG_BATTLESHIP_RESULT = 0x09
+MSG_BATTLESHIP_QUIT = 0x0A
 
 # Protocol constants
 HEADER_SIZE = 5  # 1 byte type + 4 bytes length
@@ -115,6 +121,79 @@ class Protocol:
         import json
         data = json.loads(payload.decode('utf-8'))
         return data['name'], data['chat_color'], data['theme_color']
+    
+    # Battleship game messages
+    
+    @staticmethod
+    def create_battleship_invite():
+        """Create a battleship game invitation."""
+        return Protocol.encode_message(MSG_BATTLESHIP_INVITE, b'')
+    
+    @staticmethod
+    def create_battleship_accept(accepted: bool):
+        """Create battleship invitation response."""
+        import json
+        data = {'accepted': accepted}
+        return Protocol.encode_message(MSG_BATTLESHIP_ACCEPT, json.dumps(data).encode('utf-8'))
+    
+    @staticmethod
+    def parse_battleship_accept(payload):
+        """Parse battleship acceptance response."""
+        import json
+        data = json.loads(payload.decode('utf-8'))
+        return data['accepted']
+    
+    @staticmethod
+    def create_battleship_ship_placement(ships_data):
+        """
+        Create ship placement message.
+        
+        Args:
+            ships_data: List of dicts with ship info
+        """
+        import json
+        return Protocol.encode_message(MSG_BATTLESHIP_SHIP_PLACEMENT, json.dumps(ships_data).encode('utf-8'))
+    
+    @staticmethod
+    def parse_battleship_ship_placement(payload):
+        """Parse ship placement data."""
+        import json
+        return json.loads(payload.decode('utf-8'))
+    
+    @staticmethod
+    def create_battleship_move(coordinate: str):
+        """Create battleship move (attack) message."""
+        return Protocol.encode_message(MSG_BATTLESHIP_MOVE, coordinate.encode('utf-8'))
+    
+    @staticmethod
+    def parse_battleship_move(payload):
+        """Parse battleship move."""
+        return payload.decode('utf-8')
+    
+    @staticmethod
+    def create_battleship_result(result: str, ship_name: str = None):
+        """
+        Create battleship attack result message.
+        
+        Args:
+            result: "hit", "miss", "sunk"
+            ship_name: Name of ship if sunk
+        """
+        import json
+        data = {'result': result, 'ship_name': ship_name}
+        return Protocol.encode_message(MSG_BATTLESHIP_RESULT, json.dumps(data).encode('utf-8'))
+    
+    @staticmethod
+    def parse_battleship_result(payload):
+        """Parse battleship result."""
+        import json
+        data = json.loads(payload.decode('utf-8'))
+        return data['result'], data.get('ship_name')
+    
+    @staticmethod
+    def create_battleship_quit():
+        """Create battleship quit message."""
+        return Protocol.encode_message(MSG_BATTLESHIP_QUIT, b'')
 
 
 if __name__ == "__main__":
