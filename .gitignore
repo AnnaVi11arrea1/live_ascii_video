@@ -40,3 +40,4 @@ Thumbs.db
 .pytest_cache/
 .coverage
 htmlcov/
+battleship_debug.log

@@ -15,6 +15,16 @@ from battleship import BattleshipGame, BattleshipAI, Orientation, Ship
 from command_utils import open_manual, show_quick_help
 from ai_assistant import BattleshipAI_Assistant
 
+# Debug logging to file
+DEBUG_FILE = open("battleship_debug.log", "w", buffering=1)
+
+def debug_log(message):
+    """Write debug message to file with timestamp."""
+    import datetime
+    timestamp = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
+    DEBUG_FILE.write(f"[{timestamp}] {message}\n")
+    DEBUG_FILE.flush()
+
 
 class ChatSession:
     """Coordinates video chat session with all components."""
@@ -469,8 +479,10 @@ class ChatSession:
         if message.startswith('/'):
             # Check if it's a battleship game command (coordinate or placement)
             if self.battleship_game and self.battleship_game.game_phase in ["setup", "playing"]:
+                debug_log(f" Checking if battleship input: '{message}', game_phase: {self.battleship_game.game_phase}")
                 cmd_upper = message[1:].strip().upper()  # Remove slash and convert to uppercase
                 parts = cmd_upper.split()
+                debug_log(f" Parts: {parts}")
                 
                 is_battleship_input = False
                 
@@ -480,6 +492,7 @@ class ChatSession:
                         pos = BattleshipGame.coord_to_pos(parts[0])
                         if pos:
                             is_battleship_input = True
+                            debug_log(f" Recognized as ship placement input")
                 
                 elif self.battleship_game.game_phase == "playing":
                     # Attack format: "/A5"
@@ -487,10 +500,14 @@ class ChatSession:
                         pos = BattleshipGame.coord_to_pos(parts[0])
                         if pos:
                             is_battleship_input = True
+                            debug_log(f" Recognized as attack input")
                 
                 if is_battleship_input:
+                    debug_log(f" Calling _handle_battleship_input with: {cmd_upper}")
                     self._handle_battleship_input(cmd_upper)
                     return
+                else:
+                    debug_log(f" Not battleship input, treating as command")
             
             # Not a battleship command, handle as normal command
             self._handle_command(message)
@@ -1049,8 +1066,11 @@ class ChatSession:
     
     def _prompt_next_ship_placement(self):
         """Prompt user to place the next ship."""
+        debug_log(f" _prompt_next_ship_placement called. Ship index: {self.battleship_setup_ship_index}/{len(BattleshipGame.SHIP_TYPES)}")
+        
         if self.battleship_setup_ship_index >= len(BattleshipGame.SHIP_TYPES):
             # All ships placed
+            debug_log(f" All ships placed! Calling _start_battleship_attack_phase...")
             self._start_battleship_attack_phase()
             return
         
@@ -1131,23 +1151,42 @@ class ChatSession:
     def _start_battleship_attack_phase(self):
         """Start the attack phase of the game."""
         from blessed import Terminal
-        term = Terminal()
         
-        if self.battleship_mode == "vs_human":
-            # Multiplayer - mark that we've placed our ships
-            self.battleship_my_ships_placed = True
+        debug_log(f" _start_battleship_attack_phase called. Mode: {self.battleship_mode}")
+        
+        try:
+            term = Terminal()
+            debug_log(" Terminal initialized")
             
-            # Show blue "waiting for opponent" message
-            self.ui.add_message(term.blue("System: ✓ All your ships placed! Waiting for opponent to finish..."))
-            
-            # Send notification to opponent
-            from protocol import Protocol
-            ready_msg = Protocol.create_battleship_ship_placement()
-            self.network.send(ready_msg)
-            
-            # If opponent is also ready, start dice roll
-            if self.battleship_opponent_ships_placed:
-                self._start_dice_roll()
+            if self.battleship_mode == "vs_human":
+                # Multiplayer - mark that we've placed our ships
+                self.battleship_my_ships_placed = True
+                debug_log(f" Set my_ships_placed = True. Opponent_ships_placed: {self.battleship_opponent_ships_placed}")
+                
+                # Show blue "waiting for opponent" message
+                debug_log(" About to add blue message...")
+                self.ui.add_message(term.blue("System: ✓ All your ships placed! Waiting for opponent to finish..."))
+                debug_log(" Blue message added")
+                
+                # Send notification to opponent
+                from protocol import Protocol
+                debug_log(" Importing Protocol...")
+                ready_msg = Protocol.create_battleship_ship_placement([])  # Empty list - just signaling ready
+                debug_log(" Created ship placement message")
+                self.network.send(ready_msg)
+                debug_log(f" Sent MSG_BATTLESHIP_SHIP_PLACEMENT to opponent")
+                
+                # If opponent is also ready, start dice roll
+                if self.battleship_opponent_ships_placed:
+                    debug_log(" Opponent already ready! Starting dice roll immediately...")
+                    self._start_dice_roll()
+                else:
+                    debug_log(" Waiting for opponent to place ships...")
+        except Exception as e:
+            debug_log(f" ERROR in _start_battleship_attack_phase: {e}")
+            import traceback
+            debug_log(f" Traceback: {traceback.format_exc()}")
+            raise
         else:
             # AI mode - start immediately
             self.battleship_game.game_phase = "playing"
@@ -1165,7 +1204,10 @@ class ChatSession:
         from blessed import Terminal
         term = Terminal()
         
-        print(f"[DEBUG] _start_dice_roll called. Game phase: {self.battleship_game.game_phase}")
+        debug_log(f" === _start_dice_roll called ===")
+        debug_log(f" Game phase: {self.battleship_game.game_phase}")
+        debug_log(f" My dice roll: {self.battleship_my_dice_roll}")
+        debug_log(f" Opponent dice roll: {self.battleship_opponent_dice_roll}")
         
         self.ui.add_message("System: ═══ BOTH PLAYERS READY! ═══")
         self.ui.add_message("System: Rolling d20 to determine first turn...")
@@ -1173,23 +1215,29 @@ class ChatSession:
         # Roll our dice
         self.battleship_my_dice_roll = random.randint(1, 20)
         self.ui.add_message(f"System: You rolled: {self.battleship_my_dice_roll}")
-        print(f"[DEBUG] My dice roll: {self.battleship_my_dice_roll}")
+        debug_log(f" Generated my dice roll: {self.battleship_my_dice_roll}")
         
         # Send our roll to opponent
         from protocol import Protocol
         roll_msg = Protocol.create_battleship_move(str(self.battleship_my_dice_roll))  # Reusing move message
         self.network.send(roll_msg)
-        print(f"[DEBUG] Sent dice roll to opponent")
+        debug_log(f" Sent dice roll ({self.battleship_my_dice_roll}) via MSG_BATTLESHIP_MOVE")
         
         # If we have both rolls, determine winner
         if self.battleship_opponent_dice_roll is not None:
-            print(f"[DEBUG] Both rolls ready! Opponent rolled: {self.battleship_opponent_dice_roll}")
+            debug_log(f" Both rolls ready! Opponent rolled: {self.battleship_opponent_dice_roll}")
             self._determine_first_turn()
+        else:
+            debug_log(f" Waiting for opponent's dice roll...")
     
     def _determine_first_turn(self):
         """Determine who goes first based on dice rolls."""
         from blessed import Terminal
         term = Terminal()
+        
+        debug_log(f" === _determine_first_turn called ===")
+        debug_log(f" My roll: {self.battleship_my_dice_roll}")
+        debug_log(f" Opponent roll: {self.battleship_opponent_dice_roll}")
         
         self.ui.add_message(f"System: {self.remote_name} rolled: {self.battleship_opponent_dice_roll}")
         
@@ -1230,6 +1278,8 @@ class ChatSession:
     
     def _handle_ship_placement(self, message):
         """Handle ship placement input."""
+        debug_log(f" _handle_ship_placement called with: {message}")
+        
         parts = message.split()
         if len(parts) != 2:
             self.ui.add_message("System: Invalid format. Use: /<coordinate> <H/V>  (e.g., /A5 H)")
@@ -1253,6 +1303,8 @@ class ChatSession:
         # Try to place ship
         ship_name, ship_size = BattleshipGame.SHIP_TYPES[self.battleship_setup_ship_index]
         
+        debug_log(f" Attempting to place {ship_name} at {pos} {orientation_str}")
+        
         if self.battleship_game.place_ship(ship_name, ship_size, pos, orientation, is_player=True):
             self.ui.add_message(f"System: {ship_name} placed successfully!")
             
@@ -1260,6 +1312,7 @@ class ChatSession:
             self._show_placement_preview()
             
             self.battleship_setup_ship_index += 1
+            debug_log(f" Ship placed! New index: {self.battleship_setup_ship_index}")
             self._prompt_next_ship_placement()
         else:
             self.ui.add_message("System: Invalid placement! Ship doesn't fit or overlaps another ship.")
@@ -1486,34 +1539,46 @@ class ChatSession:
                 term = Terminal()
                 self.battleship_opponent_ships_placed = True
                 self.ui.add_message(term.blue(f"System: {self.remote_name} has finished placing ships!"))
-                print(f"[DEBUG] Received ship placement. My ships placed: {self.battleship_my_ships_placed}")
+                debug_log(f" Received MSG_BATTLESHIP_SHIP_PLACEMENT from opponent")
+                debug_log(f" My ships placed: {self.battleship_my_ships_placed}, Opponent ships placed: {self.battleship_opponent_ships_placed}")
+                debug_log(f" Game phase: {self.battleship_game.game_phase}")
                 
                 # If we're also done, start dice roll
                 if self.battleship_my_ships_placed:
-                    print("[DEBUG] Both players ready! Starting dice roll...")
+                    debug_log(" Both players ready! Starting dice roll...")
                     self._start_dice_roll()
                 else:
-                    print("[DEBUG] Waiting for local player to finish placing ships...")
+                    debug_log(" Waiting for local player to finish placing ships...")
         
         elif msg_type == MSG_BATTLESHIP_MOVE:
             # Could be opponent's attack OR dice roll
             if self.battleship_game and self.battleship_mode == "vs_human":
                 coord_str = Protocol.parse_battleship_move(payload)
+                debug_log(f" === Received MSG_BATTLESHIP_MOVE ===")
+                debug_log(f" Coord/data: {coord_str}")
+                debug_log(f" Game phase: {self.battleship_game.game_phase}")
+                debug_log(f" Is digit: {coord_str.isdigit()}")
                 
                 # Check if this is a dice roll (numeric value 1-20 during setup)
                 if self.battleship_game.game_phase == "setup" and coord_str.isdigit():
                     roll = int(coord_str)
-                    print(f"[DEBUG] Received potential dice roll: {roll}, game_phase: {self.battleship_game.game_phase}")
+                    debug_log(f" Detected as dice roll: {roll}")
                     if 1 <= roll <= 20:
                         self.battleship_opponent_dice_roll = roll
-                        self.ui.add_message(f"System: [DEBUG] Opponent rolled: {roll}")
+                        self.ui.add_message(f"System: {self.remote_name} rolled: {roll}")
+                        debug_log(f" Set opponent dice roll to {roll}")
+                        debug_log(f" My dice roll: {self.battleship_my_dice_roll}")
                         # If we have both rolls, determine winner
                         if self.battleship_my_dice_roll is not None:
-                            print(f"[DEBUG] Both rolls received! Determining winner...")
+                            debug_log(f" Both rolls received! Determining winner...")
                             self._determine_first_turn()
                         else:
-                            print(f"[DEBUG] Waiting for our dice roll...")
+                            debug_log(f" Waiting for our dice roll (my_dice_roll is None)...")
                         return
+                    else:
+                        debug_log(f" Roll {roll} out of range 1-20, treating as attack")
+                else:
+                    debug_log(f" Not a dice roll - game_phase={self.battleship_game.game_phase}, isdigit={coord_str.isdigit()}")
                 
                 # Otherwise it's an attack
                 pos = BattleshipGame.coord_to_pos(coord_str)
