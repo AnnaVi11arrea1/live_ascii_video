@@ -13,6 +13,7 @@ from terminal_ui import TerminalUI, InputHandler
 from sound_manager import SoundManager
 from battleship import BattleshipGame, BattleshipAI, Orientation, Ship
 from command_utils import open_manual, show_quick_help
+from ai_assistant import BattleshipAI_Assistant
 
 
 class ChatSession:
@@ -70,6 +71,12 @@ class ChatSession:
         
         # Initialize sound manager
         self.sound_manager = SoundManager()
+        
+        # Initialize AI assistant for trash talk
+        self.ai_assistant = BattleshipAI_Assistant()
+        self.ai_enabled = True  # Can be toggled
+        self.ai_status_shown = False  # Track if we've shown Ollama status
+        self.ai_is_commentator = False  # Track if THIS player generates AI (host if both have it)
         
         # Camera state
         self.camera_enabled = True
@@ -385,6 +392,13 @@ class ChatSession:
                 if battleship_msg:
                     self._handle_battleship_message(battleship_msg)
                 
+                # Check for AI comments
+                ai_comment = self.network.get_ai_comment(timeout=0.01)
+                if ai_comment:
+                    from protocol import Protocol
+                    comment = Protocol.parse_ai_comment(ai_comment)
+                    self.ui.add_message(f"🤖 AI: {comment}")
+                
             except Exception as e:
                 error_count += 1
                 if self.running and error_count < 3:
@@ -655,6 +669,8 @@ class ChatSession:
             self._cmd_help(args)
         elif command == '/map':
             self._cmd_map(args)
+        elif command == '/ai':
+            self._cmd_ai(args)
         else:
             self.ui.add_message(f"System: Unknown command '{command}'. Type /help for available commands or /manual for full documentation")
     
@@ -934,6 +950,40 @@ class ChatSession:
         
         self._show_attack_history()
     
+    def _cmd_ai(self, args):
+        """Talk to the AI assistant."""
+        if not args.strip():
+            self.ui.add_message("System: Usage: /ai <message> - Talk to the AI commentator")
+            self.ui.add_message("System: Example: /ai that was a terrible shot!")
+            return
+        
+        if not self.ai_enabled:
+            self.ui.add_message("System: AI commentator is disabled. (Would be here for trash talk though 🤖)")
+            return
+        
+        # Show user's message
+        self.ui.add_message(f"You → AI: {args}")
+        
+        # Get AI response in a separate thread to avoid blocking
+        def get_response():
+            response = self.ai_assistant.respond_to_chat(self.user_name, args)
+            if response:
+                self.ui.add_message(f"🤖 AI: {response}")
+        
+        threading.Thread(target=get_response, daemon=True).start()
+    
+    def _send_ai_comment(self, comment):
+        """Send AI comment to both local display and over network."""
+        if comment:
+            # Show locally
+            self.ui.add_message(f"🤖 AI: {comment}")
+            
+            # Send over network if connected
+            if self.connected and self.network and self.network.is_connected():
+                from protocol import Protocol
+                ai_msg = Protocol.create_ai_comment(comment)
+                self.network.send(ai_msg)
+    
     def _start_battleship_game(self, mode):
         """Start a new battleship game."""
         self.battleship_mode = mode
@@ -962,6 +1012,39 @@ class ChatSession:
         self.ui.add_message("System: ═══ BATTLESHIP GAME STARTED ═══")
         self.ui.add_message("System: Place your ships! Use /coordinate orientation (e.g., /A5 H)")
         self._prompt_next_ship_placement()
+        
+        # Determine if this player should generate AI commentary
+        # For multiplayer: host generates AI if they have Ollama
+        # For AI mode: always generate locally
+        if mode == "vs_human":
+            self.ai_is_commentator = (self.mode == 'host' and self.ai_assistant.is_available())
+        else:
+            self.ai_is_commentator = self.ai_assistant.is_available()
+        
+        # Check AI availability and show status once
+        if self.ai_enabled and not self.ai_status_shown:
+            if self.ai_assistant.is_available():
+                if mode == "vs_human" and self.ai_is_commentator:
+                    self.ui.add_message("System: 🤖 You are the AI Commentator! Both players will see your AI's trash talk")
+                elif mode == "vs_human":
+                    self.ui.add_message("System: 🤖 AI Commentator enabled (opponent is generating commentary)")
+                else:
+                    self.ui.add_message("System: 🤖 AI Commentator is active! (Type /ai to trash-talk back)")
+            else:
+                if mode == "vs_human":
+                    self.ui.add_message("System: 💤 Waiting for opponent's AI commentary...")
+                else:
+                    self.ui.add_message("System: 💤 AI Commentator offline (install Ollama for trash talk)")
+                    self.ui.add_message("System: Visit https://ollama.com to install (optional)")
+            self.ai_status_shown = True
+        
+        # AI opening trash talk (only commentator generates)
+        if self.ai_enabled and self.ai_is_commentator:
+            def ai_intro():
+                opponent_name = self.remote_name if mode == "vs_human" else "AI"
+                comment = self.ai_assistant.comment_on_game_start(self.user_name, opponent_name if mode == "vs_human" else None)
+                self._send_ai_comment(comment)
+            threading.Thread(target=ai_intro, daemon=True).start()
     
     def _prompt_next_ship_placement(self):
         """Prompt user to place the next ship."""
@@ -1081,20 +1164,25 @@ class ChatSession:
         from blessed import Terminal
         term = Terminal()
         
+        print(f"[DEBUG] _start_dice_roll called. Game phase: {self.battleship_game.game_phase}")
+        
         self.ui.add_message("System: ═══ BOTH PLAYERS READY! ═══")
         self.ui.add_message("System: Rolling d20 to determine first turn...")
         
         # Roll our dice
         self.battleship_my_dice_roll = random.randint(1, 20)
         self.ui.add_message(f"System: You rolled: {self.battleship_my_dice_roll}")
+        print(f"[DEBUG] My dice roll: {self.battleship_my_dice_roll}")
         
         # Send our roll to opponent
         from protocol import Protocol
         roll_msg = Protocol.create_battleship_move(str(self.battleship_my_dice_roll))  # Reusing move message
         self.network.send(roll_msg)
+        print(f"[DEBUG] Sent dice roll to opponent")
         
         # If we have both rolls, determine winner
         if self.battleship_opponent_dice_roll is not None:
+            print(f"[DEBUG] Both rolls ready! Opponent rolled: {self.battleship_opponent_dice_roll}")
             self._determine_first_turn()
     
     def _determine_first_turn(self):
@@ -1213,10 +1301,28 @@ class ChatSession:
         # Display result
         if result == "miss":
             self.ui.add_message(f"System: {coord_str} - MISS! ○")
+            # AI trash talk on miss (only if we're commentator)
+            if self.ai_enabled and self.ai_is_commentator:
+                def ai_miss():
+                    comment = self.ai_assistant.comment_on_miss(self.user_name, coord_str, True)
+                    self._send_ai_comment(comment)
+                threading.Thread(target=ai_miss, daemon=True).start()
         elif result == "hit":
             self.ui.add_message(f"System: {coord_str} - HIT! ✕")
+            # AI trash talk on hit (only if we're commentator)
+            if self.ai_enabled and self.ai_is_commentator:
+                def ai_hit():
+                    comment = self.ai_assistant.comment_on_hit(self.user_name, coord_str, True)
+                    self._send_ai_comment(comment)
+                threading.Thread(target=ai_hit, daemon=True).start()
         elif result == "sunk":
             self.ui.add_message(f"System: {coord_str} - HIT! You sunk their {ship_name}! ✗")
+            # AI trash talk on sunk (only if we're commentator)
+            if self.ai_enabled and self.ai_is_commentator:
+                def ai_sunk():
+                    comment = self.ai_assistant.comment_on_sunk(self.user_name, ship_name, True)
+                    self._send_ai_comment(comment)
+                threading.Thread(target=ai_sunk, daemon=True).start()
         
         # Show attack history chart
         self._show_attack_history()
@@ -1233,6 +1339,18 @@ class ChatSession:
             
             self.battleship_game.game_phase = "finished"
             self.ui.add_message("System: Game over. Type /quit to exit or /battleship to play again")
+            
+            # AI final commentary (only if we're commentator)
+            if self.ai_enabled and self.ai_is_commentator:
+                def ai_endgame():
+                    opponent = self.remote_name if self.battleship_mode == "vs_human" else "AI"
+                    comment = self.ai_assistant.comment_on_victory(
+                        self.user_name if winner == "player" else opponent,
+                        opponent if winner == "player" else self.user_name
+                    )
+                    self._send_ai_comment(comment)
+                threading.Thread(target=ai_endgame, daemon=True).start()
+            
             self._update_battleship_display()
             return
         
@@ -1369,10 +1487,14 @@ class ChatSession:
                 term = Terminal()
                 self.battleship_opponent_ships_placed = True
                 self.ui.add_message(term.blue(f"System: {self.remote_name} has finished placing ships!"))
+                print(f"[DEBUG] Received ship placement. My ships placed: {self.battleship_my_ships_placed}")
                 
                 # If we're also done, start dice roll
                 if self.battleship_my_ships_placed:
+                    print("[DEBUG] Both players ready! Starting dice roll...")
                     self._start_dice_roll()
+                else:
+                    print("[DEBUG] Waiting for local player to finish placing ships...")
         
         elif msg_type == MSG_BATTLESHIP_MOVE:
             # Could be opponent's attack OR dice roll
@@ -1382,11 +1504,16 @@ class ChatSession:
                 # Check if this is a dice roll (numeric value 1-20 during setup)
                 if self.battleship_game.game_phase == "setup" and coord_str.isdigit():
                     roll = int(coord_str)
+                    print(f"[DEBUG] Received potential dice roll: {roll}, game_phase: {self.battleship_game.game_phase}")
                     if 1 <= roll <= 20:
                         self.battleship_opponent_dice_roll = roll
+                        self.ui.add_message(f"System: [DEBUG] Opponent rolled: {roll}")
                         # If we have both rolls, determine winner
                         if self.battleship_my_dice_roll is not None:
+                            print(f"[DEBUG] Both rolls received! Determining winner...")
                             self._determine_first_turn()
+                        else:
+                            print(f"[DEBUG] Waiting for our dice roll...")
                         return
                 
                 # Otherwise it's an attack

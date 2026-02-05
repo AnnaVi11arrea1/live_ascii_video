@@ -7,7 +7,7 @@ import time
 from queue import Queue, Empty
 from protocol import (Protocol, HEADER_SIZE, MSG_VIDEO_FRAME, MSG_TEXT_MESSAGE, MSG_HEARTBEAT, MSG_USER_INFO,
                       MSG_BATTLESHIP_INVITE, MSG_BATTLESHIP_ACCEPT, MSG_BATTLESHIP_SHIP_PLACEMENT,
-                      MSG_BATTLESHIP_MOVE, MSG_BATTLESHIP_RESULT, MSG_BATTLESHIP_QUIT)
+                      MSG_BATTLESHIP_MOVE, MSG_BATTLESHIP_RESULT, MSG_BATTLESHIP_QUIT, MSG_AI_COMMENT)
 
 
 class NetworkConnection:
@@ -29,6 +29,7 @@ class NetworkConnection:
         self.text_queue = Queue()
         self.user_info_queue = Queue()
         self.battleship_queue = Queue()  # For all battleship messages
+        self.ai_queue = Queue()  # For AI commentary
         
         # Threads
         self.receive_thread = None
@@ -150,6 +151,10 @@ class NetworkConnection:
                              MSG_BATTLESHIP_MOVE, MSG_BATTLESHIP_RESULT, MSG_BATTLESHIP_QUIT]:
                 # Queue battleship messages with type
                 self.battleship_queue.put((msg_type, payload))
+            
+            elif msg_type == MSG_AI_COMMENT:
+                # Queue AI commentary
+                self.ai_queue.put(payload)
                 
         except Exception as e:
             print(f"Error handling message type 0x{msg_type:02x}: {e}")
@@ -247,6 +252,18 @@ class NetworkConnection:
         """
         try:
             return self.battleship_queue.get(timeout=timeout)
+        except Empty:
+            return None
+    
+    def get_ai_comment(self, timeout=0.1):
+        """
+        Get an AI comment from the queue.
+        
+        Returns:
+            AI comment string or None
+        """
+        try:
+            return self.ai_queue.get(timeout=timeout)
         except Empty:
             return None
     
