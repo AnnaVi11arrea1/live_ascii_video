@@ -6,8 +6,11 @@ A real-time peer-to-peer video chat application that renders video as ASCII art 
 - 🎥 Live webcam streaming as ASCII art
 - 💬 Real-time text messaging
 - 🔄 Bidirectional video (see each other)
+- 🎮 Built-in Battleship game (vs Human or AI)
+- 📚 Interactive command manual
 - 🖥️ Cross-platform (Windows, Mac, Linux)
 - ⚡ 10-15 FPS smooth streaming
+- 🎨 Multiple color modes and customization options
 
 ## Installation
 
@@ -78,12 +81,56 @@ live_ascii_video/
 - Configurable width (default: 100 chars)
 - Maintains aspect ratio
 
+## Commands & Features
+
+### Quick Commands
+- `/help` - Show quick help in chat
+- `/manual` - Open full command manual in new terminal window
+- `/battleship` - Start a Battleship game
+- `/quit` - Exit current game
+- `/color-mode {mode}` - Change video color mode
+- `/color-chat {color}` - Change chat message color
+- `/togglecam` - Turn camera on/off
+- `/exit` - Exit the application
+
+For complete command documentation, type `/manual` in the chat!
+
+### Battleship Game 🎮
+
+Play the classic naval combat game during your chat session!
+
+**Features:**
+- Play against another human (if connected) or AI opponent
+- Traditional 10x10 grid with 5 ships
+- Color-coded display (ships, hits, misses, sunk)
+- Intelligent AI with hunt-and-target strategy
+- Chat continues working during gameplay
+
+**How to Play:**
+1. Type `/battleship` to start
+2. Choose vs Human or vs AI (if connected)
+3. Place your 5 ships by entering coordinates and orientation
+   - Example: `A5 H` (horizontal) or `A5 V` (vertical)
+4. Take turns attacking coordinates
+   - Example: `D7`
+5. Sink all enemy ships to win!
+6. Type `/quit` anytime to exit the game
+
+**Ships:**
+- Carrier (5 cells)
+- Battleship (4 cells)
+- Cruiser (3 cells)
+- Submarine (3 cells)
+- Destroyer (2 cells)
+
 ### Network Protocol
 ```
 [Type: 1 byte][Length: 4 bytes][Payload: N bytes]
 - 0x01: Video Frame
 - 0x02: Text Message
 - 0x03: Heartbeat
+- 0x04: User Info
+- 0x05-0x0A: Battleship Game Messages
 ```
 
 ### Performance
@@ -109,7 +156,7 @@ live_ascii_video/
 
 ## Development Status
 
-### ✅ ALL PHASES COMPLETE!
+### ✅ ALL FEATURES COMPLETE!
 - [x] ASCII art converter with compression
 - [x] Webcam capture with FPS control
 - [x] TCP P2P networking with protocol
@@ -117,6 +164,9 @@ live_ascii_video/
 - [x] Full integration with threading
 - [x] CLI arguments and optimization
 - [x] Message chat functionality
+- [x] Battleship game (vs Human & AI)
+- [x] Interactive command manual
+- [x] Color customization
 
 **Status: Ready to use! 🚀**
 
@@ -127,6 +177,7 @@ live_ascii_video/
 - Filters and effects
 - NAT traversal
 - End-to-end encryption
+- More mini-games (Chess, Tic-Tac-Toe, etc.)
 
 ## License
 MIT

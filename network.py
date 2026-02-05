@@ -5,7 +5,9 @@ import socket
 import threading
 import time
 from queue import Queue, Empty
-from protocol import Protocol, HEADER_SIZE, MSG_VIDEO_FRAME, MSG_TEXT_MESSAGE, MSG_HEARTBEAT, MSG_USER_INFO
+from protocol import (Protocol, HEADER_SIZE, MSG_VIDEO_FRAME, MSG_TEXT_MESSAGE, MSG_HEARTBEAT, MSG_USER_INFO,
+                      MSG_BATTLESHIP_INVITE, MSG_BATTLESHIP_ACCEPT, MSG_BATTLESHIP_SHIP_PLACEMENT,
+                      MSG_BATTLESHIP_MOVE, MSG_BATTLESHIP_RESULT, MSG_BATTLESHIP_QUIT)
 
 
 class NetworkConnection:
@@ -26,6 +28,7 @@ class NetworkConnection:
         self.video_queue = Queue(maxsize=5)  # Keep only recent frames
         self.text_queue = Queue()
         self.user_info_queue = Queue()
+        self.battleship_queue = Queue()  # For all battleship messages
         
         # Threads
         self.receive_thread = None
@@ -142,6 +145,11 @@ class NetworkConnection:
             elif msg_type == MSG_USER_INFO:
                 # Queue user info
                 self.user_info_queue.put(payload)
+            
+            elif msg_type in [MSG_BATTLESHIP_INVITE, MSG_BATTLESHIP_ACCEPT, MSG_BATTLESHIP_SHIP_PLACEMENT,
+                             MSG_BATTLESHIP_MOVE, MSG_BATTLESHIP_RESULT, MSG_BATTLESHIP_QUIT]:
+                # Queue battleship messages with type
+                self.battleship_queue.put((msg_type, payload))
                 
         except Exception as e:
             print(f"Error handling message type 0x{msg_type:02x}: {e}")
@@ -227,6 +235,18 @@ class NetworkConnection:
         """
         try:
             return self.text_queue.get(timeout=timeout)
+        except Empty:
+            return None
+    
+    def get_battleship_message(self, timeout=0.1):
+        """
+        Get a battleship game message from the queue.
+        
+        Returns:
+            Tuple of (msg_type, payload) or None
+        """
+        try:
+            return self.battleship_queue.get(timeout=timeout)
         except Empty:
             return None
     
