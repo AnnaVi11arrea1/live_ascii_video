@@ -1213,8 +1213,10 @@ class ChatSession:
         # Display result
         if result == "miss":
             self.ui.add_message(f"System: {coord_str} - MISS! ○")
+            self.sound_manager.play_battleship_miss()
         elif result == "hit":
             self.ui.add_message(f"System: {coord_str} - HIT! ✕")
+            self.sound_manager.play_battleship_hit()
         elif result == "sunk":
             self.ui.add_message(f"System: {coord_str} - HIT! You sunk their {ship_name}! ✗")
         
@@ -1228,6 +1230,7 @@ class ChatSession:
             term = Terminal()
             if winner == "player":
                 self.ui.add_message(term.bright_green("System: ★★★ VICTORY! You sunk all enemy ships! ★★★"))
+                self.sound_manager.play_battleship_win()    
             else:
                 self.ui.add_message("System: ☠ DEFEAT! All your ships were sunk! ☠")
             

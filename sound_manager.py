@@ -16,6 +16,9 @@ class SoundManager:
         self.chat_ding_sound = self._get_default_sound_path('ding.wav')
         self.app_start_sound = self._get_default_sound_path('appstart.wav')
         self.ping_alert_sound = self._get_default_sound_path('alert.wav')
+        self.battleship_miss_sound = self._get_default_sound_path('battleship_miss.wav')
+        self.battleship_hit_sound = self._get_default_sound_path('battleship_hit.wav')
+        self.battleship_win_sound = self._get_default_sound_path('victory_sound.wav')
         self.muted = muted
     
     def _get_default_sound_path(self, filename):
@@ -48,6 +51,28 @@ class SoundManager:
         """Set custom path for ping alert sound."""
         if os.path.exists(path):
             self.ping_alert_sound = path
+            return True
+        return False
+    
+    # Set Battleship sounds
+    def set_battleship_miss_sound(self, path):
+        """Set custom path for battleship miss sound."""
+        if os.path.exists(path):
+            self.battleship_miss_sound = path
+            return True
+        return False
+    
+    def set_battleship_hit_sound(self, path):
+        """Set custom path for battleship hit sound."""
+        if os.path.exists(path):
+            self.battleship_hit_sound = path
+            return True
+        return False
+    
+    def set_battleship_win_sound(self, path):
+        """Set custom path for battleship win sound."""
+        if os.path.exists(path):
+            self.battleship_win_sound = path
             return True
         return False
     
