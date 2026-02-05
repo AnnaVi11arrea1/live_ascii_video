@@ -16,6 +16,7 @@ MSG_BATTLESHIP_SHIP_PLACEMENT = 0x07
 MSG_BATTLESHIP_MOVE = 0x08
 MSG_BATTLESHIP_RESULT = 0x09
 MSG_BATTLESHIP_QUIT = 0x0A
+MSG_AI_COMMENT = 0x0B  # AI commentary message
 
 # Protocol constants
 HEADER_SIZE = 5  # 1 byte type + 4 bytes length
@@ -194,6 +195,16 @@ class Protocol:
     def create_battleship_quit():
         """Create battleship quit message."""
         return Protocol.encode_message(MSG_BATTLESHIP_QUIT, b'')
+    
+    @staticmethod
+    def create_ai_comment(comment: str):
+        """Create AI comment message."""
+        return Protocol.encode_message(MSG_AI_COMMENT, comment.encode('utf-8'))
+    
+    @staticmethod
+    def parse_ai_comment(payload):
+        """Parse AI comment."""
+        return payload.decode('utf-8')
 
 
 if __name__ == "__main__":
