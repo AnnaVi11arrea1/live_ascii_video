@@ -960,6 +960,7 @@ class ChatSession:
         
         # Start ship placement phase
         self.ui.add_message("System: ═══ BATTLESHIP GAME STARTED ═══")
+        self.sound_manager.play_battleship_start()
         self.ui.add_message("System: Place your ships! Use /coordinate orientation (e.g., /A5 H)")
         self._prompt_next_ship_placement()
     
@@ -1219,6 +1220,7 @@ class ChatSession:
             self.sound_manager.play_battleship_hit()
         elif result == "sunk":
             self.ui.add_message(f"System: {coord_str} - HIT! You sunk their {ship_name}! ✗")
+            self.sound_manager.play_battleship_sink()
         
         # Show attack history chart
         self._show_attack_history()
