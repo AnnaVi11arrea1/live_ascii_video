@@ -11,6 +11,8 @@ from ascii_converter import AsciiConverter
 from network import NetworkConnection, NetworkServer
 from terminal_ui import TerminalUI, InputHandler
 from sound_manager import SoundManager
+from battleship import BattleshipGame, BattleshipAI, Orientation, Ship
+from command_utils import open_manual, show_quick_help
 
 
 class ChatSession:
@@ -71,6 +73,16 @@ class ChatSession:
         
         # Camera state
         self.camera_enabled = True
+        
+        # Battleship game state
+        self.battleship_game = None
+        self.battleship_ai = None
+        self.battleship_mode = None  # None, "vs_human", "vs_ai"
+        self.battleship_setup_ship_index = 0
+        self.battleship_my_turn = False
+        self.battleship_invite_pending = False
+        self.battleship_waiting_for_opponent = False
+        self.battleship_last_attack_pos = None  # Track last attack coordinate for multiplayer
         
         # State
         self.running = False
@@ -363,6 +375,11 @@ class ChatSession:
                     self.ui.update_remote_name(name, theme_color)
                     self.ui.add_message(f"System: {name} has joined the chat!")
                 
+                # Check for battleship messages
+                battleship_msg = self.network.get_battleship_message(timeout=0.01)
+                if battleship_msg:
+                    self._handle_battleship_message(battleship_msg)
+                
             except Exception as e:
                 error_count += 1
                 if self.running and error_count < 3:
@@ -410,8 +427,53 @@ class ChatSession:
     
     def _on_user_message(self, message):
         """Handle user sending a message or command."""
+        # Check if responding to battleship invitation
+        if self.battleship_invite_pending and not message.startswith('/'):
+            response = message.strip().lower()
+            if response in ['yes', 'y']:
+                self.ui.add_message("System: Accepted invitation! Starting game...")
+                from protocol import Protocol
+                accept_msg = Protocol.create_battleship_accept(True)
+                self.network.send(accept_msg)
+                self.battleship_invite_pending = False
+                self._start_battleship_game("vs_human")
+                return
+            elif response in ['no', 'n']:
+                self.ui.add_message("System: Declined invitation")
+                from protocol import Protocol
+                decline_msg = Protocol.create_battleship_accept(False)
+                self.network.send(decline_msg)
+                self.battleship_invite_pending = False
+                return
+        
         # Check if message is a command
         if message.startswith('/'):
+            # Check if it's a battleship game command (coordinate or placement)
+            if self.battleship_game and self.battleship_game.game_phase in ["setup", "playing"]:
+                cmd_upper = message[1:].strip().upper()  # Remove slash and convert to uppercase
+                parts = cmd_upper.split()
+                
+                is_battleship_input = False
+                
+                if self.battleship_game.game_phase == "setup":
+                    # Ship placement format: "/A5 H" or "/A5 V"
+                    if len(parts) == 2 and parts[1] in ['H', 'V']:
+                        pos = BattleshipGame.coord_to_pos(parts[0])
+                        if pos:
+                            is_battleship_input = True
+                
+                elif self.battleship_game.game_phase == "playing":
+                    # Attack format: "/A5"
+                    if len(parts) == 1:
+                        pos = BattleshipGame.coord_to_pos(parts[0])
+                        if pos:
+                            is_battleship_input = True
+                
+                if is_battleship_input:
+                    self._handle_battleship_input(cmd_upper)
+                    return
+            
+            # Not a battleship command, handle as normal command
             self._handle_command(message)
         else:
             # Regular message - check for emoji shortcode
@@ -578,20 +640,16 @@ class ChatSession:
             self._cmd_exit(args)
         elif command == '/style':
             self._cmd_style(args)
+        elif command == '/manual':
+            self._cmd_manual(args)
+        elif command == '/battleship':
+            self._cmd_battleship(args)
+        elif command == '/quit':
+            self._cmd_quit(args)
         elif command == '/help':
-            self.ui.add_message("System: Available commands:")
-            self.ui.add_message("System: /copyframe - Copy current ASCII frame to clipboard")
-            self.ui.add_message("System: /color-mode {mode} - Change video color mode (normal, rainbow, grayscale)")
-            self.ui.add_message("System: /color-chat {color} - Change your chat message color")
-            self.ui.add_message("System: /theme {color} - Set video, frame, and chat colors to the same color")
-            self.ui.add_message("System: /ping {message} - Send an alert to the other user")
-            self.ui.add_message("System: /togglesound - Toggle all sounds on/off")
-            self.ui.add_message("System: /togglecam - Turn camera on/off")
-            self.ui.add_message("System: /exit - Exit the program")
-            self.ui.add_message("System: /style - Show text styling help")
-            self.ui.add_message("System: Type [command] help for details on a command")
+            self._cmd_help(args)
         else:
-            self.ui.add_message(f"System: Unknown command '{command}'. Try /copyframe, /color-mode, /color-chat, /theme, /ping, /togglesound, /togglecam, /exit, or /style")
+            self.ui.add_message(f"System: Unknown command '{command}'. Type /help for available commands or /manual for full documentation")
     
     def _cmd_copyframe(self, args):
         """Copy current ASCII frame to clipboard."""
@@ -809,6 +867,499 @@ class ChatSession:
                     stdin=subprocess.PIPE
                 )
                 process.communicate(input=text.encode('utf-8'))
+    
+    def _cmd_manual(self, args):
+        """Open command manual in new terminal window."""
+        if open_manual():
+            self.ui.add_message("System: Opening manual in new window...")
+        else:
+            self.ui.add_message("System: Failed to open manual. Check COMMANDS.md file exists.")
+    
+    def _cmd_help(self, args):
+        """Show quick help in chat."""
+        help_messages = show_quick_help()
+        for msg in help_messages:
+            self.ui.add_message(f"System: {msg}")
+    
+    def _cmd_battleship(self, args):
+        """Start a battleship game."""
+        if self.battleship_game:
+            self.ui.add_message("System: A game is already in progress. Type /quit to exit current game.")
+            return
+        
+        # Check if connected for multiplayer option
+        if self.connected and self.network and self.network.is_connected():
+            self.ui.add_message("System: Inviting opponent to play Battleship...")
+            self.ui.add_message("System: Waiting for response...")
+            
+            # Send invitation
+            from protocol import Protocol
+            invite_msg = Protocol.create_battleship_invite()
+            self.network.send(invite_msg)
+            
+            # Note: battleship_invite_pending should NOT be set here
+            # That flag is only for the person RECEIVING an invitation
+            self.battleship_waiting_for_opponent = True
+            
+            # Set a timeout or let user cancel with /quit
+        else:
+            self.ui.add_message("System: Not connected. Starting Battleship vs AI...")
+            self._start_battleship_game("vs_ai")
+    
+    def _cmd_quit(self, args):
+        """Quit battleship game."""
+        if not self.battleship_game:
+            self.ui.add_message("System: No active game to quit.")
+            return
+        
+        self._end_battleship_game()
+        self.ui.add_message("System: Exited Battleship game")
+    
+    def _start_battleship_game(self, mode):
+        """Start a new battleship game."""
+        self.battleship_mode = mode
+        self.battleship_game = BattleshipGame(mode=mode)
+        self.battleship_setup_ship_index = 0
+        
+        # Initialize AI if needed
+        if mode == "vs_ai":
+            self.battleship_ai = BattleshipAI(self.battleship_game)
+            self.battleship_ai.place_ships()
+        elif mode == "vs_human":
+            # For multiplayer, create placeholder opponent ships so check_winner() works
+            # We don't know their positions, but we need to track which ones are sunk
+            for ship_name, ship_size in BattleshipGame.SHIP_TYPES:
+                # Create dummy ships at position (0,0) - positions don't matter for multiplayer
+                # We only care about tracking which ships are sunk via hit_positions
+                dummy_ship = Ship(ship_name, ship_size, (0, 0), Orientation.HORIZONTAL)
+                # Don't set is_sunk directly - it's a computed property
+                # When we get a "sunk" result, we'll fill hit_positions
+                self.battleship_game.opponent_ships.append(dummy_ship)
+        
+        # Activate game UI
+        self.ui.start_battleship()
+        
+        # Start ship placement phase
+        self.ui.add_message("System: ═══ BATTLESHIP GAME STARTED ═══")
+        self.ui.add_message("System: Place your ships! Use /coordinate orientation (e.g., /A5 H)")
+        self._prompt_next_ship_placement()
+    
+    def _prompt_next_ship_placement(self):
+        """Prompt user to place the next ship."""
+        if self.battleship_setup_ship_index >= len(BattleshipGame.SHIP_TYPES):
+            # All ships placed
+            self._start_battleship_attack_phase()
+            return
+        
+        ship_name, ship_size = BattleshipGame.SHIP_TYPES[self.battleship_setup_ship_index]
+        self.ui.add_message(f"System: Place {ship_name} (size {ship_size})")
+        self.ui.add_message(f"System: Enter: /<coordinate> <H/V> (e.g., /A5 H or /D3 V)")
+        
+        # Update display
+        self._update_battleship_display()
+    
+    def _show_placement_preview(self):
+        """Show a text preview of the current ship placement in chat."""
+        board = self.battleship_game.get_board_display(is_player_grid=True, show_ships=True, use_color=False)
+        lines = board.split('\n')
+        
+        self.ui.add_message("System: ┌─── Current Setup ───┐")
+        for line in lines:
+            self.ui.add_message(f"System: │ {line}")
+        self.ui.add_message("System: └─────────────────────┘")
+    
+    def _show_attack_history(self):
+        """Show a visual chart of all attacks (hits and misses) in chat."""
+        if not self.battleship_game:
+            return
+        
+        # Use blessed Terminal for colors in chat
+        from blessed import Terminal
+        term = Terminal()
+        
+        self.ui.add_message("System: ┌─── Your Attack History ───┐")
+        
+        # Build the board with colors
+        lines = []
+        # Header
+        header = "    " + " ".join(f"{i:2}" for i in range(1, self.battleship_game.grid_size + 1))
+        lines.append(header)
+        
+        # Rows
+        for row in range(self.battleship_game.grid_size):
+            row_char = chr(ord('A') + row)
+            row_str = f" {row_char}  "
+            
+            for col in range(self.battleship_game.grid_size):
+                pos = (row, col)
+                
+                if pos in self.battleship_game.player_attacks:
+                    # Check if it was a hit
+                    is_hit = False
+                    for ship in self.battleship_game.opponent_ships:
+                        if pos in ship.positions:
+                            is_hit = True
+                            break
+                    
+                    if is_hit:
+                        # Red X for hits
+                        row_str += f" {term.red('X')} "
+                    else:
+                        # White O for misses
+                        row_str += f" {term.white('O')} "
+                else:
+                    # Cyan ~ for unknown
+                    row_str += f" {term.cyan('~')} "
+            
+            lines.append(row_str)
+        
+        # Display in chat
+        for line in lines:
+            self.ui.add_message(f"System: │ {line}")
+        
+        # Add legend
+        self.ui.add_message(f"System: │ Legend: {term.red('X')}=Hit {term.white('O')}=Miss {term.cyan('~')}=Unknown")
+        self.ui.add_message("System: └──────────────────────────┘")
+    
+    def _start_battleship_attack_phase(self):
+        """Start the attack phase of the game."""
+        self.battleship_game.game_phase = "playing"
+        self.battleship_my_turn = True
+        
+        self.ui.add_message("System: ═══ ALL SHIPS PLACED - BATTLE BEGINS! ═══")
+        self.ui.add_message("System: Enter coordinates to attack (e.g., /A5)")
+        self.ui.add_message("System: Type /quit to exit game anytime")
+        
+        self._update_battleship_display()
+    
+    def _handle_battleship_input(self, message):
+        """Handle input during battleship game."""
+        message = message.strip().upper()
+        
+        if self.battleship_game.game_phase == "setup":
+            # Ship placement phase
+            self._handle_ship_placement(message)
+        elif self.battleship_game.game_phase == "playing":
+            # Attack phase
+            self._handle_battleship_attack(message)
+    
+    def _handle_ship_placement(self, message):
+        """Handle ship placement input."""
+        parts = message.split()
+        if len(parts) != 2:
+            self.ui.add_message("System: Invalid format. Use: /<coordinate> <H/V>  (e.g., /A5 H)")
+            return
+        
+        coord_str, orientation_str = parts
+        
+        # Parse coordinate
+        pos = BattleshipGame.coord_to_pos(coord_str)
+        if not pos:
+            self.ui.add_message(f"System: Invalid coordinate '{coord_str}'. Use A-J and 1-10")
+            return
+        
+        # Parse orientation
+        if orientation_str not in ['H', 'V']:
+            self.ui.add_message("System: Invalid orientation. Use H (horizontal) or V (vertical)")
+            return
+        
+        orientation = Orientation.HORIZONTAL if orientation_str == 'H' else Orientation.VERTICAL
+        
+        # Try to place ship
+        ship_name, ship_size = BattleshipGame.SHIP_TYPES[self.battleship_setup_ship_index]
+        
+        if self.battleship_game.place_ship(ship_name, ship_size, pos, orientation, is_player=True):
+            self.ui.add_message(f"System: {ship_name} placed successfully!")
+            
+            # Show preview of current board setup
+            self._show_placement_preview()
+            
+            self.battleship_setup_ship_index += 1
+            self._prompt_next_ship_placement()
+        else:
+            self.ui.add_message("System: Invalid placement! Ship doesn't fit or overlaps another ship.")
+            self.ui.add_message("System: Try again.")
+    
+    def _handle_battleship_attack(self, coord_str):
+        """Handle attack input."""
+        if not self.battleship_my_turn:
+            self.ui.add_message("System: It's not your turn yet!")
+            return
+        
+        # Parse coordinate
+        pos = BattleshipGame.coord_to_pos(coord_str)
+        if not pos:
+            self.ui.add_message(f"System: Invalid coordinate '{coord_str}'. Use A-J and 1-10")
+            return
+        
+        # For multiplayer, send move to opponent
+        if self.battleship_mode == "vs_human":
+            from protocol import Protocol
+            move_msg = Protocol.create_battleship_move(coord_str)
+            self.network.send(move_msg)
+            self.ui.add_message(f"System: Attacking {coord_str}...")
+            # Store the position for when we get the result back
+            self.battleship_last_attack_pos = pos
+            # Result will come back via MSG_BATTLESHIP_RESULT
+            return
+        
+        # For AI mode, process attack immediately
+        # Attack
+        result, ship_name = self.battleship_game.attack(pos, is_player_attacking=True)
+        
+        if result == "invalid":
+            self.ui.add_message("System: Invalid coordinate!")
+            return
+        elif result == "already_attacked":
+            self.ui.add_message("System: You already attacked that position!")
+            return
+        
+        # Display result
+        if result == "miss":
+            self.ui.add_message(f"System: {coord_str} - MISS! ○")
+        elif result == "hit":
+            self.ui.add_message(f"System: {coord_str} - HIT! ✕")
+        elif result == "sunk":
+            self.ui.add_message(f"System: {coord_str} - HIT! You sunk their {ship_name}! ✗")
+        
+        # Show attack history chart
+        self._show_attack_history()
+        
+        # Check for winner
+        winner = self.battleship_game.check_winner()
+        if winner:
+            if winner == "player":
+                self.ui.add_message("System: ★★★ VICTORY! You sunk all enemy ships! ★★★")
+            else:
+                self.ui.add_message("System: ☠ DEFEAT! All your ships were sunk! ☠")
+            
+            self.battleship_game.game_phase = "finished"
+            self.ui.add_message("System: Game over. Type /quit to exit or /battleship to play again")
+            self._update_battleship_display()
+            return
+        
+        # AI's turn
+        if self.battleship_mode == "vs_ai":
+            self.battleship_my_turn = False
+            self._update_battleship_display()
+            
+            # Small delay for realism
+            time.sleep(1)
+            
+            # AI attacks
+            ai_pos = self.battleship_ai.choose_attack()
+            ai_result, ai_ship = self.battleship_game.attack(ai_pos, is_player_attacking=False)
+            ai_coord = BattleshipGame.pos_to_coord(ai_pos)
+            
+            # Process AI result
+            self.battleship_ai.process_result(ai_pos, ai_result, ai_ship)
+            
+            # Display AI attack
+            if ai_result == "miss":
+                self.ui.add_message(f"System: AI attacks {ai_coord} - MISS! ○")
+            elif ai_result == "hit":
+                self.ui.add_message(f"System: AI attacks {ai_coord} - HIT! ✕")
+            elif ai_result == "sunk":
+                self.ui.add_message(f"System: AI attacks {ai_coord} - HIT! Your {ai_ship} was sunk! ✗")
+            
+            # Check for winner again
+            winner = self.battleship_game.check_winner()
+            if winner:
+                if winner == "player":
+                    self.ui.add_message("System: ★★★ VICTORY! You sunk all enemy ships! ★★★")
+                else:
+                    self.ui.add_message("System: ☠ DEFEAT! All your ships were sunk! ☠")
+                
+                self.battleship_game.game_phase = "finished"
+                self.ui.add_message("System: Game over. Type /quit to exit or /battleship to play again")
+            else:
+                self.battleship_my_turn = True
+                self.ui.add_message("System: Your turn! Enter coordinates to attack (e.g., /A5)")
+        
+        self._update_battleship_display()
+    
+    def _update_battleship_display(self):
+        """Update the battleship game display."""
+        if not self.battleship_game:
+            return
+        
+        # Get player's board (shows own ships)
+        player_board = self.battleship_game.get_board_display(is_player_grid=True, show_ships=True)
+        
+        # Get attack board (shows attacks on opponent, no ships)
+        attack_board = self.battleship_game.get_board_display(is_player_grid=False, show_ships=False)
+        
+        # Create status text
+        player_ships_left = self.battleship_game.get_remaining_ships(is_player=True)
+        opponent_ships_left = self.battleship_game.get_remaining_ships(is_player=False)
+        
+        if self.battleship_game.game_phase == "setup":
+            status = f"Setup Phase - Placing ships..."
+        elif self.battleship_game.game_phase == "playing":
+            turn_text = "YOUR TURN" if self.battleship_my_turn else "OPPONENT'S TURN"
+            status = f"{turn_text} | Your Ships: {player_ships_left} | Enemy Ships: {opponent_ships_left}"
+        else:
+            status = "Game Over"
+        
+        # Add headers to boards
+        player_board_titled = "YOUR SHIPS\n" + player_board
+        attack_board_titled = "YOUR ATTACKS\n" + attack_board
+        
+        self.ui.update_battleship_boards(player_board_titled, attack_board_titled, status)
+    
+    def _end_battleship_game(self):
+        """End the current battleship game."""
+        # Send quit message if in multiplayer
+        if self.battleship_mode == "vs_human" and self.network and self.network.is_connected():
+            from protocol import Protocol
+            quit_msg = Protocol.create_battleship_quit()
+            self.network.send(quit_msg)
+        
+        self.battleship_game = None
+        self.battleship_ai = None
+        self.battleship_mode = None
+        self.battleship_setup_ship_index = 0
+        self.battleship_my_turn = False
+        self.battleship_invite_pending = False
+        self.battleship_waiting_for_opponent = False
+        self.ui.stop_battleship()
+    
+    def _handle_battleship_message(self, msg_data):
+        """Handle received battleship protocol messages."""
+        from protocol import (Protocol, MSG_BATTLESHIP_INVITE, MSG_BATTLESHIP_ACCEPT,
+                            MSG_BATTLESHIP_SHIP_PLACEMENT, MSG_BATTLESHIP_MOVE,
+                            MSG_BATTLESHIP_RESULT, MSG_BATTLESHIP_QUIT)
+        
+        msg_type, payload = msg_data
+        
+        if msg_type == MSG_BATTLESHIP_INVITE:
+            # Received game invitation
+            if self.battleship_game:
+                # Already in a game, decline
+                decline_msg = Protocol.create_battleship_accept(False)
+                self.network.send(decline_msg)
+                self.ui.add_message(f"System: {self.remote_name} wants to play Battleship, but you're already in a game!")
+            else:
+                self.ui.add_message(f"System: {self.remote_name} invited you to play Battleship!")
+                self.ui.add_message("System: Type 'yes' or 'y' to accept, 'no' or 'n' to decline")
+                self.battleship_invite_pending = True
+        
+        elif msg_type == MSG_BATTLESHIP_ACCEPT:
+            # Response to our invitation
+            accepted = Protocol.parse_battleship_accept(payload)
+            if accepted:
+                self.ui.add_message(f"System: {self.remote_name} accepted! Starting game...")
+                self.battleship_waiting_for_opponent = False
+                self._start_battleship_game("vs_human")
+            else:
+                self.ui.add_message(f"System: {self.remote_name} declined the invitation")
+                self.battleship_invite_pending = False
+                self.battleship_waiting_for_opponent = False
+        
+        elif msg_type == MSG_BATTLESHIP_SHIP_PLACEMENT:
+            # Opponent finished ship placement
+            if self.battleship_game and self.battleship_mode == "vs_human":
+                self.ui.add_message("System: Opponent has finished placing ships!")
+                # Check if we're also done to start the game
+                if self.battleship_game.game_phase == "playing":
+                    self.ui.add_message("System: Both players ready - Battle begins!")
+        
+        elif msg_type == MSG_BATTLESHIP_MOVE:
+            # Opponent's attack
+            if self.battleship_game and self.battleship_mode == "vs_human":
+                coord_str = Protocol.parse_battleship_move(payload)
+                pos = BattleshipGame.coord_to_pos(coord_str)
+                
+                if pos:
+                    # Process attack on our grid
+                    result, ship_name = self.battleship_game.attack(pos, is_player_attacking=False)
+                    
+                    # Send result back
+                    result_msg = Protocol.create_battleship_result(result, ship_name)
+                    self.network.send(result_msg)
+                    
+                    # Display what happened
+                    if result == "miss":
+                        self.ui.add_message(f"System: {self.remote_name} attacks {coord_str} - MISS! ○")
+                    elif result == "hit":
+                        self.ui.add_message(f"System: {self.remote_name} attacks {coord_str} - HIT! ✕")
+                    elif result == "sunk":
+                        self.ui.add_message(f"System: {self.remote_name} attacks {coord_str} - Your {ship_name} was sunk! ✗")
+                    
+                    # Check for winner
+                    winner = self.battleship_game.check_winner()
+                    if winner:
+                        if winner == "opponent":
+                            # Opponent sunk all our ships - they win, we lose
+                            self.ui.add_message("System: ☠ DEFEAT! All your ships were sunk! ☠")
+                        else:
+                            # We sunk all opponent's ships - we win
+                            self.ui.add_message("System: ★★★ VICTORY! You sunk all enemy ships! ★★★")
+                        self.battleship_game.game_phase = "finished"
+                    else:
+                        # Now it's our turn
+                        self.battleship_my_turn = True
+                        self.ui.add_message("System: Your turn! (e.g., /A5)")
+                    
+                    self._update_battleship_display()
+        
+        elif msg_type == MSG_BATTLESHIP_RESULT:
+            # Result of our attack  
+            if self.battleship_game and self.battleship_mode == "vs_human":
+                result, ship_name = Protocol.parse_battleship_result(payload)
+                
+                # Record the attack locally now that we have the result
+                if self.battleship_last_attack_pos and result in ["miss", "hit", "sunk"]:
+                    # Manually record the attack in our attack set
+                    self.battleship_game.player_attacks.add(self.battleship_last_attack_pos)
+                    
+                    # If a ship was sunk, mark it in our opponent_ships list
+                    if result == "sunk" and ship_name:
+                        for ship in self.battleship_game.opponent_ships:
+                            if ship.name == ship_name:
+                                # Mark ship as sunk by filling all its hit_positions
+                                # is_sunk is a computed property based on hit_positions
+                                for pos in ship.positions:
+                                    ship.hit_positions.add(pos)
+                                break
+                
+                # Display the result of our attack
+                coord_str = BattleshipGame.pos_to_coord(self.battleship_last_attack_pos) if self.battleship_last_attack_pos else "?"
+                if result == "miss":
+                    self.ui.add_message(f"System: {coord_str} - MISS! ○")
+                elif result == "hit":
+                    self.ui.add_message(f"System: {coord_str} - HIT! ✕")
+                elif result == "sunk":
+                    self.ui.add_message(f"System: {coord_str} - HIT! You sunk their {ship_name}! ✗")
+                elif result == "already_attacked":
+                    self.ui.add_message(f"System: You already attacked that position!")
+                
+                # Clear the stored position
+                self.battleship_last_attack_pos = None
+                
+                # Show attack history chart
+                self._show_attack_history()
+                
+                # Check if we won (all opponent ships sunk)
+                winner = self.battleship_game.check_winner()
+                if winner:
+                    if winner == "player":
+                        self.ui.add_message("System: ★★★ VICTORY! You sunk all enemy ships! ★★★")
+                    else:
+                        self.ui.add_message("System: ☠ DEFEAT! All your ships were sunk! ☠")
+                    self.battleship_game.game_phase = "finished"
+                    self.ui.add_message("System: Game over. Type /quit to exit or /battleship to play again")
+                else:
+                    # Now opponent's turn
+                    self.battleship_my_turn = False
+                    self.ui.add_message("System: Opponent's turn...")
+                
+                self._update_battleship_display()
+        
+        elif msg_type == MSG_BATTLESHIP_QUIT:
+            # Opponent quit the game
+            self.ui.add_message(f"System: {self.remote_name} quit the game")
+            self._end_battleship_game()
     
     def stop(self):
         """Stop the session and clean up."""
