@@ -83,6 +83,7 @@ class ChatSession:
         self.battleship_invite_pending = False
         self.battleship_waiting_for_opponent = False
         self.battleship_last_attack_pos = None  # Track last attack coordinate for multiplayer
+        self.battleship_my_hits = set()  # Track which of our attacks were hits (for multiplayer)
         
         # State
         self.running = False
@@ -994,12 +995,16 @@ class ChatSession:
                 pos = (row, col)
                 
                 if pos in self.battleship_game.player_attacks:
-                    # Check if it was a hit
+                    # For multiplayer, use the hits set; for AI, check ship positions
                     is_hit = False
-                    for ship in self.battleship_game.opponent_ships:
-                        if pos in ship.positions:
-                            is_hit = True
-                            break
+                    if self.battleship_mode == "vs_human":
+                        is_hit = pos in self.battleship_my_hits
+                    else:
+                        # For AI mode, check actual ship positions
+                        for ship in self.battleship_game.opponent_ships:
+                            if pos in ship.positions:
+                                is_hit = True
+                                break
                     
                     if is_hit:
                         # Red X for hits
@@ -1222,6 +1227,8 @@ class ChatSession:
         self.battleship_my_turn = False
         self.battleship_invite_pending = False
         self.battleship_waiting_for_opponent = False
+        self.battleship_last_attack_pos = None
+        self.battleship_my_hits = set()
         self.ui.stop_battleship()
     
     def _handle_battleship_message(self, msg_data):
@@ -1312,6 +1319,10 @@ class ChatSession:
                 if self.battleship_last_attack_pos and result in ["miss", "hit", "sunk"]:
                     # Manually record the attack in our attack set
                     self.battleship_game.player_attacks.add(self.battleship_last_attack_pos)
+                    
+                    # Track hits separately for multiplayer (we don't know actual ship positions)
+                    if result in ["hit", "sunk"]:
+                        self.battleship_my_hits.add(self.battleship_last_attack_pos)
                     
                     # If a ship was sunk, mark it in our opponent_ships list
                     if result == "sunk" and ship_name:
