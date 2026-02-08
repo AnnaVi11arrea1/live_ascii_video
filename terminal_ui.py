@@ -9,11 +9,20 @@ import time
 class TerminalUI:
     """Manages the terminal user interface."""
     
-    def __init__(self):
-        """Initialize terminal UI."""
+    def __init__(self, user_name="You", theme_color="green"):
+        """Initialize terminal UI.
+        
+        Args:
+            user_name: Display name for the local user
+            theme_color: Theme color for video frame
+        """
         self.term = Terminal()
         self.running = False
         self.render_thread = None
+        self.user_name = user_name
+        self.theme_color = theme_color
+        self.remote_name = "Remote"
+        self.remote_theme_color = "blue"
         
         # UI state
         self.remote_frame = ""
@@ -24,6 +33,12 @@ class TerminalUI:
         self.fps_remote = 0
         self.fps_local = 0
         self.layout_changed = False
+        
+        # Battleship game state
+        self.battleship_active = False
+        self.battleship_player_board = ""
+        self.battleship_attack_board = ""
+        self.battleship_status = ""
         
         # Layout
         self.update_layout()
@@ -37,11 +52,20 @@ class TerminalUI:
         self.height = self.term.height
         
         # Side-by-side layout: Left = Remote, Right = Local, Bottom = Chat
-        # Use most of the terminal for video
-        self.video_height = max(75, self.height - 5)  # Use almost all terminal for video
+        # Keep video height fixed, give more space to chat below
+        # Minimum video height to be usable
+        min_video_height = 30
+        
+        # Calculate video height: keep it fixed unless terminal is very small
+        self.video_height = min_video_height
         self.video_width = max(50, (self.width - 2) // 2)  # Split width in half with divider
         
-        self.chat_height = max(2, self.height - self.video_height - 2)
+        # Chat gets remaining space after video + separator + status + input
+        # Layout: video (20) + separator (1) + header (1) + status (1) + input (1) = 24 lines minimum
+        # Remaining space goes to chat messages
+        reserved_lines = 4  # separator + header + status + input
+        available_chat_height = max(5, self.height - self.video_height - reserved_lines)
+        self.chat_height = available_chat_height
         
         # Positions
         self.left_x = 0
@@ -94,19 +118,24 @@ class TerminalUI:
             else:
                 output.append(self.term.home)
             
-            # Headers
-            remote_header = " REMOTE VIDEO ".center(self.video_width)
-            local_header = " YOUR VIDEO ".center(self.video_width)
+            # Headers with dynamic colors
+            remote_header = f" {self.remote_name.upper()} ".center(self.video_width)
+            local_header = f" {self.user_name.upper()} ".center(self.video_width)
             
-            output.append(self.term.move_xy(self.left_x, 0) + self.term.bold_white_on_blue(remote_header))
-            output.append(self.term.move_xy(self.right_x, 0) + self.term.bold_white_on_green(local_header))
+            # Get color functions based on theme
+            remote_color_func = getattr(self.term, f'bold_white_on_{self.remote_theme_color}', self.term.bold_white_on_blue)
+            local_color_func = getattr(self.term, f'bold_white_on_{self.theme_color}', self.term.bold_white_on_green)
+            
+            output.append(self.term.move_xy(self.left_x, 0) + remote_color_func(remote_header))
+            output.append(self.term.move_xy(self.right_x, 0) + local_color_func(local_header))
             
             # Split frames into lines
             remote_lines = self.remote_frame.split('\n') if self.remote_frame else []
             local_lines = self.local_frame.split('\n') if self.local_frame else []
             
-            # Render videos side by side
-            for i in range(min(self.video_height - 1, 60)):  # Cap at 60 lines max
+            # Render videos side by side (cap at reasonable max to leave room for chat)
+            max_video_lines = min(self.video_height - 1, 50)
+            for i in range(max_video_lines):
                 y_pos = i + 1
                 
                 # Remote video (left) - keep ANSI codes, just truncate
@@ -127,22 +156,70 @@ class TerminalUI:
                 output.append(self.term.move_xy(self.right_x, y_pos) + line + self.term.clear_eol)
             
             # Chat section separator
-            separator = "─" * min(self.width, 150)
+            if self.battleship_active:
+                separator = "Commands: /quit to exit game | /manual for help | Chat messages work during game!".center(self.width, '─')
+            else:
+                separator = "Commands: /copyframe /color-mode /color-chat /ping /togglesound /togglecam /exit /style. For help, type /help.".center(self.width, '─')
             output.append(self.term.move_xy(0, self.chat_y) + self.term.bold_black_on_white(separator))
             
             # Messages header
             output.append(self.term.move_xy(0, self.chat_y + 1) + self.term.bold(" MESSAGES "))
             
-            # Show recent messages
-            start_idx = max(0, len(self.messages) - (self.chat_height - 2))
+            # Show recent messages (show as many as fit in chat_height)
+            num_visible_msgs = self.chat_height - 1  # -1 for header
+            start_idx = max(0, len(self.messages) - num_visible_msgs)
             for i, msg in enumerate(self.messages[start_idx:]):
+                if i >= num_visible_msgs:
+                    break
                 y_pos = self.chat_y + i + 2
                 truncated_msg = msg[:self.width-1]
                 output.append(self.term.move_xy(0, y_pos) + truncated_msg + self.term.clear_eol)
             
             # Clear remaining chat lines
-            for i in range(len(self.messages[start_idx:]), self.chat_height - 2):
+            for i in range(len(self.messages[start_idx:]), num_visible_msgs):
                 output.append(self.term.move_xy(0, self.chat_y + i + 2) + self.term.clear_eol)
+            
+            # Battleship game display (if active)
+            if self.battleship_active and self.battleship_player_board:
+                game_y = self.chat_y + num_visible_msgs + 3
+                
+                # Game separator
+                game_sep = " BATTLESHIP ".center(self.width, '═')
+                output.append(self.term.move_xy(0, game_y) + self.term.bold_cyan(game_sep))
+                
+                # Split boards into lines
+                player_lines = self.battleship_player_board.split('\n') if self.battleship_player_board else []
+                attack_lines = self.battleship_attack_board.split('\n') if self.battleship_attack_board else []
+                
+                # Calculate board width (approximately half the terminal width)
+                board_width = min(40, self.width // 2 - 2)
+                
+                # Render boards side by side
+                max_board_lines = min(len(player_lines), len(attack_lines), 15)
+                for i in range(max_board_lines):
+                    y_pos = game_y + i + 1
+                    
+                    # Your ships board (left)
+                    if i < len(player_lines):
+                        line = player_lines[i][:board_width]
+                    else:
+                        line = ""
+                    output.append(self.term.move_xy(0, y_pos) + line.ljust(board_width))
+                    
+                    # Divider
+                    output.append(self.term.move_xy(board_width, y_pos) + " │ ")
+                    
+                    # Your attacks board (right)
+                    if i < len(attack_lines):
+                        line = attack_lines[i][:board_width]
+                    else:
+                        line = ""
+                    output.append(self.term.move_xy(board_width + 3, y_pos) + line)
+                
+                # Game status
+                status_y = game_y + max_board_lines + 1
+                if status_y < self.status_y:
+                    output.append(self.term.move_xy(0, status_y) + self.term.bold_yellow(self.battleship_status[:self.width]))
             
             # Status bar
             status = f"Status: {self.status_text} | FPS: Remote={self.fps_remote:.1f} Local={self.fps_local:.1f}"
@@ -162,7 +239,7 @@ class TerminalUI:
         with self.lock:
             # Truncate frame if too long to prevent overflow
             lines = frame.split('\n')
-            max_lines = min(len(lines), self.video_height - 1, 60)
+            max_lines = min(len(lines), 50)  # Cap at 50 lines for video
             self.remote_frame = '\n'.join(lines[:max_lines])
     
     def update_local_frame(self, frame):
@@ -170,7 +247,7 @@ class TerminalUI:
         with self.lock:
             # Truncate frame if too long to prevent overflow
             lines = frame.split('\n')
-            max_lines = min(len(lines), self.video_height - 1, 60)
+            max_lines = min(len(lines), 50)  # Cap at 50 lines for video
             self.local_frame = '\n'.join(lines[:max_lines])
     
     def add_message(self, message):
@@ -206,6 +283,34 @@ class TerminalUI:
         """Clear the input text."""
         with self.lock:
             self.input_text = ""
+    
+    def update_remote_name(self, name, theme_color):
+        """Update remote user's name and theme color."""
+        with self.lock:
+            self.remote_name = name
+            self.remote_theme_color = theme_color
+    
+    def start_battleship(self):
+        """Activate battleship game UI."""
+        with self.lock:
+            self.battleship_active = True
+            self.layout_changed = True
+    
+    def stop_battleship(self):
+        """Deactivate battleship game UI."""
+        with self.lock:
+            self.battleship_active = False
+            self.battleship_player_board = ""
+            self.battleship_attack_board = ""
+            self.battleship_status = ""
+            self.layout_changed = True
+    
+    def update_battleship_boards(self, player_board: str, attack_board: str, status: str):
+        """Update battleship game boards."""
+        with self.lock:
+            self.battleship_player_board = player_board
+            self.battleship_attack_board = attack_board
+            self.battleship_status = status
 
 
 class InputHandler:
@@ -224,6 +329,11 @@ class InputHandler:
         self.running = False
         self.input_thread = None
         self.input_buffer = ""
+        
+        # History tracking
+        self.history = []
+        self.history_index = -1
+        self.history_search = ""  # Temporarily stores input while browsing history
     
     def start(self):
         """Start the input handling loop."""
@@ -246,8 +356,11 @@ class InputHandler:
                         if key.name == 'KEY_ENTER':
                             # User pressed Enter
                             if self.input_buffer.strip():
+                                # Add to history before sending
+                                self._add_to_history(self.input_buffer.strip())
                                 self.on_input_callback(self.input_buffer.strip())
                                 self.input_buffer = ""
+                                self.history_index = -1  # Reset history index
                         
                         elif key.name == 'KEY_BACKSPACE':
                             # Backspace
@@ -257,6 +370,15 @@ class InputHandler:
                         elif key.name == 'KEY_ESCAPE':
                             # Escape - clear input
                             self.input_buffer = ""
+                            self.history_index = -1  # Reset history
+                        
+                        elif key.name == 'KEY_UP':
+                            # Go back in history
+                            self._history_previous()
+                        
+                        elif key.name == 'KEY_DOWN':
+                            # Go forward in history
+                            self._history_next()
                         
                         elif key.is_sequence:
                             # Ignore other special keys
@@ -270,6 +392,53 @@ class InputHandler:
             except Exception as e:
                 # Don't crash on input errors
                 pass
+    
+    def _add_to_history(self, command):
+        """Add a command to the history."""
+        self.history.append(command)
+        # Keep history to last 100 entries
+        if len(self.history) > 100:
+            self.history = self.history[-100:]
+    
+    def _history_previous(self):
+        """Go back one entry in history."""
+        if not self.history:
+            return
+        
+        # If at the end of history, save current input
+        if self.history_index == -1:
+            self.history_search = self.input_buffer
+        
+        # Move back in history
+        new_index = self.history_index - 1
+        
+        # Prevent going beyond the start of history
+        if new_index < -len(self.history):
+            new_index = -len(self.history)
+        
+        self.history_index = new_index
+        
+        # Load the history entry
+        if self.history_index < 0:
+            self.input_buffer = self.history[self.history_index]
+        else:
+            self.input_buffer = self.history_search
+    
+    def _history_next(self):
+        """Go forward one entry in history."""
+        if not self.history or self.history_index == -1:
+            return
+        
+        # Move forward in history
+        self.history_index += 1
+        
+        # If we've gone past the end, restore the saved input
+        if self.history_index >= 0:
+            self.input_buffer = self.history_search
+            self.history_index = -1
+        else:
+            # Load the history entry
+            self.input_buffer = self.history[self.history_index]
     
     def get_buffer(self):
         """Get current input buffer."""

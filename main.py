@@ -8,11 +8,15 @@ Usage:
 """
 import argparse
 import sys
-from rich import print
-from rich.highlighter import Highlighter
-from random import randint
+from rich.console import Console
+from rich.text import Text
 from session import ChatSession
 
+# imports the new sound manager library
+from sound_manager import SoundManager
+sound_manager = SoundManager()
+
+console = Console()
 
 def parse_args():
     """Parse command line arguments."""
@@ -86,35 +90,77 @@ Controls:
     parser.add_argument(
         '--color',
         type=str,
-        choices=['rainbow', 'bw', 'normal'],
+        choices=['rainbow', 'bw', 'normal', 'red', 'green', 'blue', 'yellow', 'magenta', 'cyan', 'white', 'black'],
         default='rainbow',
-        help='Color mode: rainbow (heatmap), bw (black/white), normal (original colors). Default: rainbow'
+        help='Color mode: rainbow (heatmap), bw (black/white), normal (original colors), or solid colors. Default: rainbow'
     )
     
     return parser.parse_args()
 
-class RainbowHighlighter(Highlighter):
-    def highlight(self, text):
-        for index in range(len(text)):
-            text.stylize(f"color({randint(16, 255)})", index, index + 1)
-
-
-rainbow = RainbowHighlighter()
 
 def print_banner():
-    """Print ASCII art banner."""
+    """Print ASCII art banner with gradient effect."""
     banner = r"""
-    ___   _______________   _    ___     __                ____ __          __ 
-   /   | / ___/ ____/  _/  | |  / (_)___/ /__  ____      / __ )/ /_  ______/ /_
-  / /| | \__ \/ /    / /   | | / / / __  / _ \/ __ \    / __  / / / / / __  / /
- / ___ |___/ / /____/ /    | |/ / / /_/ /  __/ /_/ /   / /_/ / / /_/ / /_/ / /_
-/_/  |_/____/\____/___/    |___/_/\__,_/\___/\____/   /_____/_/\__,_/\__,_/\__/
-                                                     
+                                                                           
+     .oo .oPYo. .oPYo. o o   o      o 8       o                            
+    .P 8 8      8    8 8 8   8      8 8                                    
+   .P  8 `Yooo. 8      8 8   8      8 8oPYo. o8 .oPYo. .oPYo. .oPYo. oPYo. 
+  oPooo8     `8 8      8 8   8  db  8 8    8  8 Yb..   8    8 8oooo8 8  `' 
+ .P    8      8 8    8 8 8   `b.PY.d' 8    8  8   'Yb. 8    8 8.     8     
+.P     8 `YooP' `YooP' 8 8    `8  8'  8    8  8 `YooP' 8YooP' `Yooo' 8     
+..:::::..:.....::.....:....::::..:..::..:::..:..:.....:8 ....::.....:..::::
+:::::::::::::::::::::::::::::::::::::::::::::::::::::::8 ::::::::::::::::::
+:::::::::::::::::::::::::::::::::::::::::::::::::::::::..::::::::::::::::::
+
     """
-    print(rainbow(banner))
-    print("Real-time P2P Video Chat with ASCII Art - v2.0")
-    print("=" * 80)
+    
+    # Create gradient from yellow → lime → blue → purple → magenta
+    text = Text(banner)
+    
+    # Calculate gradient steps
+    lines = banner.split('\n')
+    total_chars = sum(len(line) for line in lines)
+    
+    # Define gradient colors (hex format)
+    colors = [
+        "#FFFF00",  # Yellow
+        "#BFFF00",  # Yellow-Lime transition
+        "#7FFF00",  # Lime
+        "#00FFFF",  # Cyan (transition to blue)
+        "#0080FF",  # Blue
+        "#4000FF",  # Blue-Purple
+        "#8000FF",  # Purple
+        "#BF00FF",  # Purple-Magenta
+        "#FF00FF",  # Magenta
+    ]
+    
+    # Apply gradient character by character
+    char_index = 0
+    for line_num, line in enumerate(lines):
+        for char_pos, char in enumerate(line):
+            if char.strip():  # Only color non-whitespace
+                # Calculate which color to use based on position
+                progress = char_index / max(total_chars - 1, 1)
+                color_idx = int(progress * (len(colors) - 1))
+                color_idx = min(color_idx, len(colors) - 1)
+                
+                # Calculate position in output
+                offset = sum(len(lines[i]) + 1 for i in range(line_num)) + char_pos
+                text.stylize(colors[color_idx], offset, offset + 1)
+            
+            char_index += 1
+    
+    console.print(text)
+    console.print("[bold cyan]Real-time P2P Video Chat with ASCII Art - v2.0[/bold cyan]")
+    console.print("=" * 80)
     print()
+    
+    # Play startup sound    
+    sound_manager.play_app_start_sound()
+
+    global user_name
+    user_name = input("Enter your display name: ").strip()
+    print(f"Welcome, {user_name}!")
 
 
 def validate_settings(args):
@@ -135,26 +181,105 @@ def validate_settings(args):
 
 def ask_color_mode():
     """Ask user for color mode preference."""
-    print("Color Mode Options:")
-    print("  1. Rainbow Heatmap (colorful, brightness-based)")
-    print("  2. Black & White (classic ASCII)")
-    print("  3. Normal Colors (original image colors)")
+    console.print("\n[bold]Color Mode Options:[/bold]")
+    console.print("  [yellow]1.[/yellow] Rainbow Heatmap (colorful, brightness-based)")
+    console.print("  [white]2.[/white] Black & White (classic ASCII)")
+    console.print("  [cyan]3.[/cyan] Normal Colors (original image colors)")
+    console.print("  [red]4.[/red] Red (brightness varies color intensity)")
+    console.print("  [green]5.[/green] Green (brightness varies color intensity)")
+    console.print("  [blue]6.[/blue] Blue (brightness varies color intensity)")
+    console.print("  [yellow]7.[/yellow] Yellow (brightness varies color intensity)")
+    console.print("  [magenta]8.[/magenta] Magenta (brightness varies color intensity)")
+    console.print("  [cyan]9.[/cyan] Cyan (brightness varies color intensity)")
+    console.print("  [white]10.[/white] White (brightness varies intensity)")
+    console.print("  [black]11.[/black] Black (subtle brightness variation)")
     
     while True:
-        choice = input("\nSelect color mode (1-3): ").strip()
+        choice = input("\nSelect color mode (1-11): ").strip()
         if choice == '1':
             return 'rainbow'
         elif choice == '2':
             return 'bw'
         elif choice == '3':
             return 'normal'
+        elif choice == '4':
+            return 'red'
+        elif choice == '5':
+            return 'green'
+        elif choice == '6':
+            return 'blue'
+        elif choice == '7':
+            return 'yellow'
+        elif choice == '8':
+            return 'magenta'
+        elif choice == '9':
+            return 'cyan'
+        elif choice == '10':
+            return 'white'
+        elif choice == '11':
+            return 'black'
         else:
-            print("Invalid choice. Please enter 1, 2, or 3.")
+            console.print("[red]Invalid choice. Please enter 1-11.[/red]")
+
+
+def ask_chat_color():
+    """Ask user for their chat message color."""
+    console.print("\n[bold]Chat Color Options:[/bold]")
+    console.print("  1. Red")
+    console.print("  2. Green")
+    console.print("  3. Yellow")
+    console.print("  4. Blue")
+    console.print("  5. Magenta")
+    console.print("  6. Cyan")
+    console.print("  7. White")
+    
+    colors = {
+        '1': 'red',
+        '2': 'green',
+        '3': 'yellow',
+        '4': 'blue',
+        '5': 'magenta',
+        '6': 'cyan',
+        '7': 'white'
+    }
+    
+    while True:
+        choice = input("\nSelect your chat color (1-7): ").strip()
+        if choice in colors:
+            return colors[choice]
+        else:
+            console.print("[red]Invalid choice. Please enter 1-7.[/red]")
+
+
+def ask_theme_color():
+    """Ask user for their video frame theme color."""
+    console.print("\n[bold]Video Frame Theme:[/bold]")
+    console.print("  1. Green")
+    console.print("  2. Blue")
+    console.print("  3. Cyan")
+    console.print("  4. Magenta")
+    console.print("  5. Yellow")
+    
+    themes = {
+        '1': 'green',
+        '2': 'blue',
+        '3': 'cyan',
+        '4': 'magenta',
+        '5': 'yellow'
+    }
+    
+    while True:
+        choice = input("\nSelect your video frame theme (1-5): ").strip()
+        if choice in themes:
+            return themes[choice]
+        else:
+            console.print("[red]Invalid choice. Please enter 1-5.[/red]")
+
 
 
 def main():
-    """Main entry point."""
-    print_banner()
+    """Main entry point."""    
+    print_banner()    
     
     # Parse arguments
     args = parse_args()
@@ -164,35 +289,41 @@ def main():
         args.color = ask_color_mode()
         print()
     
+    # Ask for customization options
+    chat_color = ask_chat_color()
+    print()
+    theme_color = ask_theme_color()
+    print()
+    
     # Validate settings
     errors = validate_settings(args)
     if errors:
-        print("ERROR: Invalid settings:")
+        console.print("[bold red]ERROR: Invalid settings:[/bold red]")
         for error in errors:
-            print(f"  - {error}")
+            console.print(f"  [red]- {error}[/red]")
         sys.exit(1)
     
     # Determine mode
     if args.host:
         mode = 'host'
         remote_host = None
-        print(f"Mode: HOST")
-        print(f"Listening on: {args.bind}:{args.port}")
-        print(f"Share your IP with your peer so they can connect")
+        console.print(f"[bold green]Mode:[/bold green] HOST")
+        console.print(f"[yellow]Listening on:[/yellow] {args.bind}:{args.port}")
+        console.print(f"[yellow]Share your IP with your peer so they can connect[/yellow]")
     else:
         mode = 'connect'
         remote_host = args.connect
-        print(f"Mode: CONNECT")
-        print(f"Connecting to: {remote_host}:{args.port}")
+        console.print(f"[bold green]Mode:[/bold green] CONNECT")
+        console.print(f"[yellow]Connecting to:[/yellow] {remote_host}:{args.port}")
     
-    print(f"Camera device: {args.device}")
+    console.print(f"[cyan]Camera device:[/cyan] {args.device}")
     if args.width:
-        print(f"ASCII width: {args.width} characters (manual)")
+        console.print(f"[cyan]ASCII width:[/cyan] {args.width} characters (manual)")
     else:
-        print(f"ASCII width: Auto-detect from terminal size")
-    print(f"Color mode: {args.color}")
+        console.print(f"[cyan]ASCII width:[/cyan] Auto-detect from terminal size")
+    console.print(f"[cyan]Color mode:[/cyan] {args.color}")
     print()
-    print("Starting in 2 seconds... (Ctrl+C to cancel)")
+    console.print("[bold]Starting in 2 seconds... (Ctrl+C to cancel)[/bold]")
     print()
     
     import time
@@ -207,16 +338,19 @@ def main():
             remote_host=remote_host,
             ascii_width=args.width,
             device_id=args.device,
-            color_mode=args.color
+            color_mode=args.color,
+            user_name=user_name,
+            chat_color=chat_color,
+            theme_color=theme_color
         )
         
         session.start()
         
     except KeyboardInterrupt:
-        print("\nCancelled by user")
+        console.print("\n[yellow]Cancelled by user[/yellow]")
         sys.exit(0)
     except Exception as e:
-        print(f"\nError: {e}")
+        console.print(f"\n[bold red]Error:[/bold red] {e}")
         sys.exit(1)
 
 

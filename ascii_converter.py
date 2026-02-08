@@ -74,6 +74,54 @@ class AsciiConverter:
         
         return (r, g, b)
     
+    def _get_solid_color(self, brightness, color_name):
+        """Get a solid color with varying lightness based on brightness.
+        
+        Args:
+            brightness: Value from 0-255 (from grayscale image)
+            color_name: Name of the color (red, green, blue, etc.)
+            
+        Returns:
+            RGB tuple where the color intensity varies with brightness
+        """
+        # Normalize brightness to 0-1
+        factor = brightness / 255.0
+        
+        # Base colors in RGB
+        color_map = {
+            'red': (255, 0, 0),
+            'green': (0, 255, 0),
+            'blue': (0, 0, 255),
+            'yellow': (255, 255, 0),
+            'magenta': (255, 0, 255),
+            'cyan': (0, 255, 255),
+            'white': (255, 255, 255),
+            'black': (0, 0, 0),
+        }
+        
+        if color_name not in color_map:
+            # Default to white if color not found
+            base_r, base_g, base_b = (255, 255, 255)
+        else:
+            base_r, base_g, base_b = color_map[color_name]
+        
+        # For white and black, handle specially
+        if color_name == 'white':
+            # White: brightness controls intensity (0=black, 255=white)
+            intensity = int(255 * factor)
+            return (intensity, intensity, intensity)
+        elif color_name == 'black':
+            # Black: always dark but varies slightly
+            intensity = int(30 * factor)  # 0-30 range
+            return (intensity, intensity, intensity)
+        else:
+            # For other colors: adjust each component based on brightness
+            # Darker areas get less color, lighter areas get full color
+            r = int(base_r * factor)
+            g = int(base_g * factor)
+            b = int(base_b * factor)
+            return (r, g, b)
+    
     def image_to_ascii(self, image):
         """
         Convert a PIL Image or numpy array to ASCII art.
@@ -161,6 +209,12 @@ class AsciiConverter:
                         r, g, b = pixels_color[y, x]
                         color_code = f'\033[38;2;{r};{g};{b}m'
                         line_chars.append(f'{color_code}{char}')
+                    else:
+                        # Solid color modes: red, green, blue, yellow, magenta, cyan, white, black
+                        brightness = pixels_gray[y, x]
+                        r, g, b = self._get_solid_color(brightness, self.color_mode)
+                        color_code = f'\033[38;2;{r};{g};{b}m'
+                        line_chars.append(f'{color_code}{char}')
                 
                 # Add reset code at end of line if using colors
                 if self.color_mode != 'bw':
@@ -188,14 +242,43 @@ class AsciiConverter:
         if self.debug:
             print(f"[DEBUG] Width updated to {width}", file=sys.stderr)
     
+    def generate_no_cam_placeholder(self):
+        """Generate a 'No Cam' placeholder ASCII art."""
+        lines = []
+        width = self.width
+        height = max(10, width // 3)
+        
+        # Create border
+        border = "═" * width
+        lines.append(border)
+        
+        # Add some padding
+        lines.append("║" + " " * (width - 2) + "║")
+        
+        # Center the "No Cam" message
+        message = "NO CAM"
+        padding = (width - len(message) - 2) // 2
+        line = "║" + " " * padding + message + " " * (width - len(message) - padding - 2) + "║"
+        lines.append(line)
+        
+        # Add more padding
+        for _ in range(height - 4):
+            lines.append("║" + " " * (width - 2) + "║")
+        
+        # Bottom border
+        lines.append(border)
+        
+        return "\n".join(lines)
+    
     def set_color_mode(self, mode):
-        """Update color mode: 'rainbow', 'bw', or 'normal'."""
-        if mode in ['rainbow', 'bw', 'normal']:
+        """Update color mode: 'rainbow', 'bw', 'normal', or solid color names."""
+        valid_modes = ['rainbow', 'bw', 'normal', 'red', 'green', 'blue', 'yellow', 'magenta', 'cyan', 'white', 'black']
+        if mode in valid_modes:
             self.color_mode = mode
             if self.debug:
                 print(f"[DEBUG] Color mode changed to {mode}", file=sys.stderr)
         else:
-            print(f"[ERROR] Invalid color mode: {mode}", file=sys.stderr)
+            print(f"[ERROR] Invalid color mode: {mode}. Valid modes: {', '.join(valid_modes)}", file=sys.stderr)
 
 
 if __name__ == "__main__":
