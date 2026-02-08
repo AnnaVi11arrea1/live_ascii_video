@@ -5,7 +5,6 @@ import subprocess
 import platform
 import os
 
-
 def open_manual():
     """
     Open the COMMANDS.md manual in a separate terminal window.
@@ -15,7 +14,8 @@ def open_manual():
     """
     # Get the path to COMMANDS.md
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    manual_path = os.path.join(script_dir, "COMMANDS.md")
+    manual_path = os.path.join(script_dir, "COMMANDS.txt")
+
     
     if not os.path.exists(manual_path):
         print(f"Manual not found at: {manual_path}")
@@ -25,10 +25,8 @@ def open_manual():
     
     try:
         if system == "Windows":
-            # Windows - open in new CMD window
-            # We use a single string with shell=True to avoid Python's list-to-commandline escaping quirks on Windows
-            # chcp 65001 sets the terminal to UTF-8 to display box characters correctly
-            command = f'start "ASCII Whisper Manual" cmd /k "chcp 65001 > nul & type \"{manual_path}\" & echo. & echo. & echo Press any key to close... & pause > nul"'
+            # Windows - open in new CMD window with type command
+            command = f'start cmd /k "chcp 65001 > nul && type \"{manual_path}\" && pause"'
             subprocess.Popen(command, shell=True)
             return True
         
