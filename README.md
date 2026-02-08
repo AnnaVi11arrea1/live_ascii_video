@@ -6,7 +6,7 @@ A real-time peer-to-peer video chat application that renders video as ASCII art 
 - 🎥 Live webcam streaming as ASCII art
 - 💬 Real-time text messaging
 - 🔄 Bidirectional video (see each other)
-- 🎮 Built-in Battleship game (vs Human or AI)
+- 🎮 Built-in Battleship game (vs Human)
 - 📚 Interactive command manual
 - 🖥️ Cross-platform (Windows, Mac, Linux)
 - ⚡ 10-15 FPS smooth streaming
