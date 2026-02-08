@@ -92,6 +92,9 @@ live_ascii_video/
 - `/color-chat {color}` - Change chat message color
 - `/togglecam` - Turn camera on/off
 - `/exit` - Exit the application
+- `/togglesound` - Mutes the sound
+- `/ping {message}` - Pings both users with an attention message
+- `/theme {color}` - Switches the theme (ascii camera, chat font) to color
 
 For complete command documentation, type `/manual` in the chat!
 
@@ -115,6 +118,7 @@ Play the classic naval combat game during your chat session!
    - Example: `D7`
 5. Sink all enemy ships to win!
 6. Type `/quit` anytime to exit the game
+7. Type `/map` anytime to view the battleship grid
 
 **Ships:**
 - Carrier (5 cells)
