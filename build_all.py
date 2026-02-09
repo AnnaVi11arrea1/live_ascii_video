@@ -37,6 +37,11 @@ def main():
     print()
     
     exe_name = "ascii-video-chat"
+    
+    # Determine the data separator for --add-data (Windows uses ; , Unix uses :)
+    data_separator = ";" if system == "windows" else ":"
+    add_data_arg = f"sounds{data_separator}sounds"
+    
     if system == "windows":
         exe_name += ".exe"
     
@@ -45,6 +50,7 @@ def main():
         "--onefile",
         "--name", "ascii-video-chat",
         "--console",
+        "--add-data", add_data_arg,
         "main.py"
     ])
     
