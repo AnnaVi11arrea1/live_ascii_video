@@ -19,7 +19,7 @@ echo "Step 2: Building executable..."
 echo "This may take a few minutes..."
 echo ""
 
-pyinstaller --onefile --name ascii-video-chat main.py
+pyinstaller --onefile --name ascii-video-chat --add-data "sounds:sounds" main.py
 
 if [ $? -ne 0 ]; then
     echo "ERROR: Build failed"

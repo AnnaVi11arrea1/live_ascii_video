@@ -26,7 +26,15 @@ class SoundManager:
     def _get_default_sound_path(self, filename):
         """Get the default path for a sound file."""
         # Sounds are stored in a 'sounds' directory next to this file
-        sounds_dir = os.path.join(os.path.dirname(__file__), 'sounds')
+        # When running from PyInstaller bundle, use sys._MEIPASS
+        if getattr(sys, 'frozen', False):
+            # Running in PyInstaller bundle
+            base_path = sys._MEIPASS
+        else:
+            # Running in normal Python environment
+            base_path = os.path.dirname(__file__)
+        
+        sounds_dir = os.path.join(base_path, 'sounds')
         sound_path = os.path.join(sounds_dir, filename)
         return sound_path
     

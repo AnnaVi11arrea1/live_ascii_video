@@ -20,7 +20,7 @@ echo Step 2: Building executable...
 echo This may take a few minutes...
 echo.
 
-python -m PyInstaller --onefile --name ascii-video-chat --console main.py
+python -m PyInstaller --onefile --name ascii-video-chat --console --add-data "sounds;sounds" main.py
 
 if %errorlevel% neq 0 (
     echo ERROR: Build failed
