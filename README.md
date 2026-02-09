@@ -1,5 +1,39 @@
-# ASCII Video Chat CLI
+```
+     .oo .oPYo. .oPYo. o o   o      o 8       o                            
+    .P 8 8      8    8 8 8   8      8 8                                    
+   .P  8 `Yooo. 8      8 8   8      8 8oPYo. o8 .oPYo. .oPYo. .oPYo. oPYo. 
+  oPooo8     `8 8      8 8   8  db  8 8    8  8 Yb..   8    8 8oooo8 8  `' 
+ .P    8      8 8    8 8 8   `b.PY.d' 8    8  8   'Yb. 8    8 8.     8     
+.P     8 `YooP' `YooP' 8 8    `8  8'  8    8  8 `YooP' 8YooP' `Yooo' 8     
+..:::::..:.....::.....:....::::..:..::..:::..:..:.....:8 ....::.....:..::::
+:::::::::::::::::::::::::::::::::::::::::::::::::::::::8 ::::::::::::::::::
+:::::::::::::::::::::::::::::::::::::::::::::::::::::::..::::::::::::::::::
 
+                     _____________________________
+                    //       ASCII WHISPER        \\                         
+                   //                              \\                  
+                  //          Version 2.0           \\                       
+                 // -------------------------------- \\
+                //  Made with love by John and Anna   \\
+               //                2026                  \\
+              --------------------------------------------
+                                                                      
+                         <                                                
+                   ..   :(l^                                              
+                 .`-,.  `r]<                                              
+                   +^   "mmY                                              
+                  ^j;..."mmY                                              
+                  !c!jOJ;mZY,<^                                           
+                  }Q+jJYXXXXXXf                    ....                   
+               `)cXXXXXXXXXXXXni.....   .|OZv[fc(!''``.    .......        
+             ."_xXXXXXXXXXXXXXXXXXXXX]...tmpmxzOppdddbbkhao*##Ci..        
+          ...:/XYJQOmpbhhhaaaaoo**##########################p1`.          
+         Ic*#############################################M*z;.            
+         .-b#############################################Z+.              
+          ^f###########################################b)`                
+           lrQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQCr;.                 
+           ...........................................      
+```
 A real-time peer-to-peer video chat application that renders video as ASCII art in your terminal!
 
 ## Features
