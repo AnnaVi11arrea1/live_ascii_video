@@ -103,10 +103,10 @@ For complete command documentation, type `/manual` in the chat!
 Play the classic naval combat game during your chat session!
 
 **Features:**
-- Play against another human (if connected) or AI opponent
+- Play against your friend
 - Traditional 10x10 grid with 5 ships
 - Color-coded display (ships, hits, misses, sunk)
-- Intelligent AI with hunt-and-target strategy
+- Intelligent AI trashtalking (Ollama required on one machine)
 - Chat continues working during gameplay
 
 **How to Play:**
