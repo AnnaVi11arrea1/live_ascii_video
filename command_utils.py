@@ -74,18 +74,16 @@ def show_quick_help():
     """
     return [
         "━━━━━━━━━ QUICK HELP ━━━━━━━━━",
-        "/manual       - Open full manual in new window",
-        "/help         - Show this quick help",
+        "/copyframe - Copy current ASCII frame to clipboard",
+        "/color-mode {mode} - Change video color mode (normal, rainbow, grayscale)",
+        "/color-chat {color} - Change your chat message color",
+        "/ping {message} - Send an alert to the other user",
+        "/mute         - Toggle all sounds on/off",
+        "/togglecam    - Turn camera on/off",
+        "/togglesound  - Turn sound on/off",
+        "/manual       - Complete full documentation of Ascii Whisper in new window",
         "/battleship   - Start Battleship game",
-        "/map          - Show attack history (during game)",
-        "/ai <msg>     - Talk to AI commentator",
-        "/quit         - Exit game (when in game)",
+        "/quit         - Exit Battleship Game (when in game)",
         "",
-        "During Battleship:",
-        "  - Ship placement: /A5 H (coordinate + H/V)",
-        "  - Attack: /A5 (just coordinate)",
-        "  - Chat normally (no slash = chat message)",
-        "",
-        "Type /manual for complete documentation!",
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     ]
